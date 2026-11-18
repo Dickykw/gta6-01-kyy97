@@ -1,10 +1,10 @@
 # SOLMARA HEAT
 
-![gta6-01](https://make.fun/badge/gta6-01.svg)
-![rank](https://make.fun/badge/gta6-01/Dickykw/gta6-01-kyy97/rank.svg)
-![reward](https://make.fun/badge/gta6-01/Dickykw/gta6-01-kyy97/reward.svg)
+[![make.fun · gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+[![rank](https://make.fun/badge/gta6-01/Dickykw/gta6-01-kyy97/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+[![reward](https://make.fun/badge/gta6-01/Dickykw/gta6-01-kyy97/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 
-An original open-world crime game for make.fun's **gta6-01 "Make GTA 6"** bounty.
+An original open-world crime game for [make.fun's **gta6-01 "Make GTA 6"** bounty](https://make.fun/bounty/gta6-01).
 Play as **Dario Voss**, a freelance driver in the sun-soaked coastal district of
 **Solmara Bay** — steal cars, run jobs for **Madame Luma**, outrun the Solmara PD,
 and build your reputation one mission at a time.
