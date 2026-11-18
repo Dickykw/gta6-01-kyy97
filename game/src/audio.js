@@ -12,6 +12,7 @@ export class AudioEngine {
     this.skidSrc = null;
     this.skidGain = null;
     this.ready = false;
+    this.trackName = 'Solmara FM · Golden Hour'; // the one synth loop on air
   }
 
   /** Call from a user gesture (start button). Safe to call repeatedly. */

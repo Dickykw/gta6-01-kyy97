@@ -41,6 +41,52 @@
   .hud-btn:hover { filter: brightness(1.12); }
   #overlay-controls { margin-top: 18px; font-size: 13px; line-height: 1.6; color: #b8b2a4; }
   #overlay-controls b { color: #ffd23c; }
+  /* --- HUD additions: Solmara Heat dense HUD --- */
+  #mission-stage { display: none; align-items: center; gap: 8px; margin-top: 6px; }
+  #stage-label { font-size: 12px; font-weight: 800; letter-spacing: 1px; color: #ffd23c; white-space: nowrap; }
+  #stage-bar { flex: 1; height: 8px; background: rgba(255,255,255,.18); border-radius: 4px; overflow: hidden; }
+  #stage-fill { height: 100%; width: 0; background: #ffd23c; border-radius: 4px; transition: width .3s; }
+  #mission-next { display: none; font-size: 12px; font-weight: 700; color: #9fd8ff; margin-top: 5px; }
+  #police-panel { display: none; margin-top: 8px; background: rgba(12,16,24,.72); border-left: 5px solid #3a7bff; border-radius: 6px; padding: 8px 12px; box-shadow: 0 4px 18px rgba(0,0,0,.35); }
+  .cop-head { font-size: 12px; font-weight: 800; letter-spacing: 2px; color: #9db8ff; margin-bottom: 4px; }
+  .cop-row { display: flex; gap: 8px; font-size: 13px; font-weight: 700; line-height: 1.5; }
+  .cop-name { color: #fff; min-width: 76px; }
+  .cop-dist { color: #e8e4da; min-width: 44px; text-align: right; }
+  .cop-status { color: #9db8ff; margin-left: auto; }
+  .cop-status.hot { color: #ff5f6d; }
+  #insight { display: none; font-size: 15px; font-weight: 800; letter-spacing: 2px; color: #ff5f6d; text-shadow: 0 2px 6px rgba(0,0,0,.8); animation: blink 0.8s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: .35; } }
+  #rep-box { margin-top: 6px; text-align: right; }
+  #rep-line { font-size: 12px; font-weight: 800; letter-spacing: 1px; color: #ffd23c; text-shadow: 0 1px 4px rgba(0,0,0,.8); }
+  #rep-bar { margin-top: 3px; height: 7px; background: rgba(255,255,255,.18); border-radius: 4px; overflow: hidden; }
+  #rep-fill { height: 100%; width: 0; background: #ffd23c; border-radius: 4px; transition: width .3s; }
+  #weapons { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
+  .wpn { font-size: 13px; font-weight: 800; letter-spacing: 1px; background: rgba(12,16,24,.72); border: 1px solid rgba(255,255,255,.25); border-radius: 5px; padding: 4px 10px; color: #cfc9bb; }
+  .wpn.active { border-color: #ffd23c; color: #fff; }
+  #dialog { display: none; position: absolute; left: 50%; bottom: 170px; transform: translateX(-50%); align-items: center; gap: 10px; background: rgba(12,16,24,.85); border: 1px solid rgba(255,210,60,.6); border-radius: 10px; padding: 10px 14px; max-width: 520px; box-shadow: 0 6px 24px rgba(0,0,0,.5); }
+  #dialog-portrait { border-radius: 8px; flex: none; }
+  #dialog-name { font-size: 13px; font-weight: 800; letter-spacing: 2px; color: #ffd23c; }
+  #dialog-line { font-size: 14px; line-height: 1.35; color: #e8e4da; margin-top: 2px; }
+  #cond-wrap { display: none; margin-top: 4px; }
+  #cond-label { font-size: 11px; font-weight: 800; letter-spacing: 2px; color: #ffd23c; text-shadow: 0 1px 4px rgba(0,0,0,.8); }
+  #cond-bar { margin-top: 2px; width: 190px; height: 8px; background: rgba(0,0,0,.55); border-radius: 4px; overflow: hidden; }
+  #cond-fill { height: 100%; width: 100%; background: #7dff8a; border-radius: 4px; transition: width .3s; }
+  #track { margin-top: 6px; font-size: 12px; font-weight: 700; color: #9fd8ff; text-shadow: 0 1px 4px rgba(0,0,0,.8); }
+  #vitals { margin-top: 8px; display: flex; flex-direction: column; gap: 5px; }
+  .vital { display: flex; align-items: center; gap: 8px; }
+  .vital span { font-size: 11px; font-weight: 800; letter-spacing: 1px; color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,.8); width: 52px; }
+  .vital-bar { width: 130px; height: 9px; background: rgba(0,0,0,.55); border-radius: 4px; overflow: hidden; }
+  #health-fill { height: 100%; width: 100%; background: #ff5f6d; border-radius: 4px; transition: width .2s; }
+  #armour-fill { height: 100%; width: 0; background: #3a7bff; border-radius: 4px; transition: width .2s; }
+  .vital b { font-size: 12px; color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,.8); min-width: 26px; }
+  #speed { font-size: 44px; }
+  #pause-tabs { display: flex; gap: 8px; justify-content: center; margin-bottom: 14px; }
+  .pause-tab { cursor: pointer; font-family: 'Arial Black', Arial, sans-serif; font-size: 14px; padding: 8px 18px; border-radius: 6px; border: 2px solid #fff; background: transparent; color: #fff; }
+  .pause-tab.active { background: #ffd23c; border-color: #ffd23c; color: #1c1c22; }
+  #pause-map-canvas { border-radius: 8px; border: 2px solid rgba(255,255,255,.6); max-width: 100%; height: auto; }
+  #pause-stats-table { margin: 0 auto; border-collapse: collapse; font-size: 15px; }
+  #pause-stats-table td { padding: 6px 14px; text-align: left; color: #e8e4da; border-bottom: 1px solid rgba(255,255,255,.12); }
+  #pause-stats-table td:last-child { font-weight: 800; color: #ffd23c; text-align: right; }
 </style>
 </head>
 <body>

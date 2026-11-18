@@ -9,41 +9,65 @@ const jeansMat = new THREE.MeshStandardMaterial({ color: 0x33455e, roughness: 0.
 const shoeMat = new THREE.MeshStandardMaterial({ color: 0x22201e, roughness: 0.7 });
 const hairMat = new THREE.MeshStandardMaterial({ color: 0x1c1410, roughness: 0.9 });
 
-/** Build the humanoid. Returns {group, armL, armR, legL, legR, torso}. */
+/** Build the humanoid. Returns {group, armL, armR, legL, legR, torso, head}. */
 export function createPlayerMesh() {
   const g = new THREE.Group();
-  const mk = (mat, w, h, d) => {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  const mesh = (geo, mat) => {
+    const m = new THREE.Mesh(geo, mat);
     m.castShadow = true;
     return m;
   };
-  // legs pivot at the hip (y = 0.86)
+  // legs pivot at the hip (y = 0.86): capsule shin + shoe with a toe
   const legL = new THREE.Group(); legL.position.set(-0.11, 0.86, 0);
   const legR = new THREE.Group(); legR.position.set(0.11, 0.86, 0);
-  const shinL = mk(jeansMat, 0.16, 0.82, 0.19); shinL.position.y = -0.41;
-  const shinR = mk(jeansMat, 0.16, 0.82, 0.19); shinR.position.y = -0.41;
-  const shoeL = mk(shoeMat, 0.17, 0.09, 0.3); shoeL.position.set(0, -0.82, 0.05);
-  const shoeR = mk(shoeMat, 0.17, 0.09, 0.3); shoeR.position.set(0, -0.82, 0.05);
-  legL.add(shinL, shoeL); legR.add(shinR, shoeR);
-  // torso
-  const torso = mk(jacketMat, 0.46, 0.58, 0.26); torso.position.y = 1.16;
-  // jacket details: collar + pocket strip
-  const collar = mk(new THREE.MeshStandardMaterial({ color: 0x1c2e3c, roughness: 0.85 }), 0.3, 0.08, 0.28);
-  collar.position.y = 1.46; g.add(collar);
-  // arms pivot at the shoulder (y = 1.4)
+  const legGeo = new THREE.CapsuleGeometry(0.09, 0.62, 4, 10);
+  const shinL = mesh(legGeo, jeansMat); shinL.position.y = -0.42;
+  const shinR = mesh(legGeo, jeansMat); shinR.position.y = -0.42;
+  const shoeGeo = new THREE.BoxGeometry(0.17, 0.09, 0.26);
+  const toeGeo = new THREE.BoxGeometry(0.16, 0.07, 0.12);
+  const shoeL = mesh(shoeGeo, shoeMat); shoeL.position.set(0, -0.82, 0.03);
+  const shoeR = mesh(shoeGeo, shoeMat); shoeR.position.set(0, -0.82, 0.03);
+  const toeL = mesh(toeGeo, shoeMat); toeL.position.set(0, -0.83, 0.19);
+  const toeR = mesh(toeGeo, shoeMat); toeR.position.set(0, -0.83, 0.19);
+  legL.add(shinL, shoeL, toeL); legR.add(shinR, shoeR, toeR);
+  // torso: tapered 8-sided cylinder (jacket, shoulders narrower than waist),
+  // squashed front-to-back so it reads as a torso, not a tube
+  const torso = mesh(new THREE.CylinderGeometry(0.21, 0.25, 0.58, 8), jacketMat);
+  torso.scale.set(1, 1, 0.6);
+  torso.position.y = 1.16;
+  // jacket details: ring collar + two thin front pockets
+  const collar = mesh(new THREE.TorusGeometry(0.16, 0.035, 8, 16), new THREE.MeshStandardMaterial({ color: 0x1c2e3c, roughness: 0.85 }));
+  collar.rotation.x = Math.PI / 2; collar.scale.set(1, 0.72, 1); collar.position.y = 1.46;
+  const pocketGeo = new THREE.BoxGeometry(0.12, 0.14, 0.02);
+  const pocketL = mesh(pocketGeo, jacketMat); pocketL.position.set(-0.1, 1.05, 0.15);
+  const pocketR = mesh(pocketGeo, jacketMat); pocketR.position.set(0.1, 1.05, 0.15);
+  // neck
+  const neck = mesh(new THREE.CylinderGeometry(0.05, 0.055, 0.09, 10), skinMat);
+  neck.position.y = 1.5;
+  // arms pivot at the shoulder (y = 1.4): shoulder ball + capsule + round hand
   const armL = new THREE.Group(); armL.position.set(-0.29, 1.4, 0);
   const armR = new THREE.Group(); armR.position.set(0.29, 1.4, 0);
-  const upperL = mk(jacketMat, 0.13, 0.6, 0.15); upperL.position.y = -0.3;
-  const upperR = mk(jacketMat, 0.13, 0.6, 0.15); upperR.position.y = -0.3;
-  const handL = mk(skinMat, 0.12, 0.12, 0.13); handL.position.y = -0.64;
-  const handR = mk(skinMat, 0.12, 0.12, 0.13); handR.position.y = -0.64;
-  armL.add(upperL, handL); armR.add(upperR, handR);
-  // head + hair
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.26, 0.24), skinMat);
-  head.position.y = 1.62; head.castShadow = true;
-  const hair = mk(hairMat, 0.26, 0.1, 0.26); hair.position.y = 1.76;
-  const nose = mk(skinMat, 0.05, 0.07, 0.05); nose.position.set(0, 1.6, 0.14);
-  g.add(legL, legR, torso, armL, armR, head, hair, nose);
+  const armGeo = new THREE.CapsuleGeometry(0.065, 0.48, 4, 10);
+  const ballGeo = new THREE.SphereGeometry(0.075, 10, 8);
+  const handGeo = new THREE.SphereGeometry(0.06, 10, 8);
+  const upperL = mesh(armGeo, jacketMat); upperL.position.y = -0.31;
+  const upperR = mesh(armGeo, jacketMat); upperR.position.y = -0.31;
+  const ballL = mesh(ballGeo, jacketMat);
+  const ballR = mesh(ballGeo, jacketMat);
+  const handL = mesh(handGeo, skinMat); handL.position.y = -0.64; handL.scale.set(1, 1.2, 1);
+  const handR = mesh(handGeo, skinMat); handR.position.y = -0.64; handR.scale.set(1, 1.2, 1);
+  armL.add(ballL, upperL, handL); armR.add(ballR, upperR, handR);
+  // head: slightly oval sphere + half-sphere hair cap + small cone nose
+  const head = mesh(new THREE.SphereGeometry(0.13, 16, 12), skinMat);
+  head.scale.set(0.92, 1.08, 0.98);
+  head.position.y = 1.62;
+  const hair = mesh(new THREE.SphereGeometry(0.135, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), hairMat);
+  hair.position.y = 1.63; hair.rotation.x = -0.15;
+  const noseGeo = new THREE.ConeGeometry(0.025, 0.07, 8);
+  noseGeo.rotateX(Math.PI / 2); // point forward (+Z)
+  const nose = mesh(noseGeo, skinMat);
+  nose.position.set(0, 1.6, 0.14);
+  g.add(legL, legR, torso, collar, pocketL, pocketR, neck, armL, armR, head, hair, nose);
   return { group: g, armL, armR, legL, legR, torso, head };
 }
 

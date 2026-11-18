@@ -31,6 +31,17 @@ class Game {
     this.shotName = SHOT;
     this.keys = {};
     this.policeNearest = 999;
+    this.selftestMode = SELFTEST;
+    // HUD-driven vitals (all real game state, shown live in the HUD)
+    this.health = 100; this.armour = 0;
+    this.repEarned = 0; // total mission rewards banked = REP points
+    this.totalEarned = 0;
+    this.carsStolen = 0;
+    this.escapes = 0;
+    this._prevWanted = 0;
+    this._ramCooldown = 0;
+    this._down = false; // game-over latch (never fires in selftest / shot mode)
+    this.vehicleCondition = new WeakMap(); // vehicle -> 0..100, 100 on entering a car
     this.save = loadSave();
 
     // renderer / scene / camera
@@ -99,6 +110,64 @@ class Game {
     this.renderer.setAnimationLoop(() => this._frame());
   }
 
+  /** Damage the player: armour absorbs first, then health. Never fatal in
+   *  selftest or shot mode — health may drop there but never ends the game. */
+  damagePlayer(amount) {
+    if (!this.started || this._down) return;
+    let left = amount;
+    if (this.armour > 0) {
+      const absorbed = Math.min(this.armour, left);
+      this.armour -= absorbed; left -= absorbed;
+    }
+    this.health = Math.max(0, this.health - left);
+    if (this.health <= 0 && !this.shotMode && !this.selftestMode) {
+      this._down = true;
+      this.paused = true;
+      this.audio.missionFailed();
+      this.hud.showGameOver();
+    }
+  }
+
+  revive() {
+    this.hud.hideOverlay();
+    this._down = false;
+    this.paused = false;
+    this.health = 100; this.armour = 0;
+    this.police.resetBusted();
+    if (this.player.inVehicle) this.player.exitVehicle();
+    this.player.x = this.world.plaza.x + 10;
+    this.player.z = this.world.plaza.z + 10;
+    this.player.mesh.position.set(this.player.x, 0, this.player.z);
+    this.player.snapCamera(this.player, false);
+    this.saveGame();
+    this.hud.toast('Dario bangkit lagi — jaga kesehatanmu');
+  }
+
+  /** REP rank from total rewards banked. Returns {level, name, into, need}. */
+  repRank() {
+    const RANKS = [
+      { at: 0, name: 'KURIR BARU' },
+      { at: 350, name: 'PENGIRIM SOLMARA' },
+      { at: 1000, name: 'KEPERCAYAAN LUMA' },
+      { at: 2000, name: 'RAJA JALANAN' },
+      { at: 4000, name: 'LEGENDA SOLMARA' },
+    ];
+    let level = 0;
+    for (let i = 0; i < RANKS.length; i++) if (this.repEarned >= RANKS[i].at) level = i;
+    const next = RANKS[level + 1];
+    return {
+      level: level + 1, name: RANKS[level].name,
+      into: next ? this.repEarned - RANKS[level].at : 1,
+      need: next ? next.at - RANKS[level].at : 1,
+      maxed: !next,
+    };
+  }
+
+  vehicleHealth(v) {
+    if (!this.vehicleCondition.has(v)) this.vehicleCondition.set(v, 100);
+    return this.vehicleCondition.get(v);
+  }
+
   // ---- flow ----
   startGame(fresh) {
     if (fresh) {
@@ -107,6 +176,10 @@ class Game {
       this.missions.index = 0;
       this.missions.completed = 0;
       this.save = null;
+      this.health = 100; this.armour = 0;
+      this.repEarned = 0; this.totalEarned = 0;
+      this.carsStolen = 0; this.escapes = 0;
+      this._down = false;
     } else if (this.save) {
       this.money = this.save.money;
       this.missions.index = this.save.missionIndex;
@@ -166,10 +239,16 @@ class Game {
   }
 
   _onMissionEvent(ev, data) {
-    if (ev === 'briefing') this.hud.showBriefing(data);
-    else if (ev === 'briefing-free') this.hud.showBriefingFree(data);
+    if (ev === 'briefing') { this.hud.showBriefing(data); this.hud.showDialog('Madame Luma', data.brief); }
+    else if (ev === 'briefing-free') { this.hud.showBriefingFree(data); this.hud.showDialog('Madame Luma', 'Dario, ada paket lagi. Ambil dan antar — cepat.'); }
+    else if (ev === 'accepted') this.hud.showDialog('Dario Voss', 'Siap, Bu Luma. Beres.');
     else if (ev === 'complete') {
       this.audio.missionComplete();
+      this.repEarned += data.reward;
+      this.totalEarned += data.reward;
+      this.armour = Math.min(100, this.armour + 25);
+      this.combat.ammoReserve = Math.min(999, this.combat.ammoReserve + 24);
+      if (this.player.inVehicle) this.vehicleCondition.set(this.player.inVehicle, 100);
       this.hud.showComplete(data.reward, data.title);
     } else if (ev === 'failed') {
       this.audio.missionFailed();
@@ -256,6 +335,7 @@ class Game {
     if (v.driver === 'parked' || v.driver === 'npc') {
       if (!v.stolen) {
         v.stolen = true;
+        this.carsStolen += 1;
         this.police.addWanted(1);
         this.hud.toast(`Mencuri ${v.spec.name}! Wanted +1 ★`, 3200);
         this.audio.pickup();
@@ -267,6 +347,7 @@ class Game {
       v.driver = 'player';
     }
     p.enterVehicle(v);
+    this.vehicleCondition.set(v, 100); // fresh car, full condition
     this.hud.toast(`${v.spec.name} — WASD nyetir, Space rem tangan, E keluar`);
   }
 
@@ -315,7 +396,14 @@ class Game {
         const auto = v.chaseInput(wp.x, wp.z);
         input.throttle = auto.throttle; input.steer = auto.steer; input.brake = 0; input.reverse = false;
       }
-      v.update(dt, input, this.world.colliders, this.allVehicles, this.dust);
+      const speedBefore = v.speed;
+      const hardHit = v.update(dt, input, this.world.colliders, this.allVehicles, this.dust);
+      if (hardHit && Math.abs(speedBefore) > 10) {
+        // hard wall impact: car condition drops, driver takes a knock
+        const cond = Math.max(0, this.vehicleHealth(v) - 8);
+        this.vehicleCondition.set(v, cond);
+        this.damagePlayer(4);
+      }
       if (this.shotMode && v.speed < 8) v.speed = 10; // never stall mid-shot
       p.x = v.x; p.z = v.z; p.heading = v.heading;
       driving = true; speed = v.speed; drifting = v.drifting;
@@ -335,13 +423,39 @@ class Game {
     this.policeNearest = this.police.update(dt, { x: p.x, z: p.z }, p.camYaw, this.world.colliders, this.allVehicles,
       () => { if (!this.shotMode) this.hud.showBusted(); },
       this.shotMode && this.shotName === 'complete'); // complete shot holds the cruiser in frame
+    // escape counted: wanted dropped from >0 to 0 (lost the heat)
+    if (this._prevWanted > 0 && this.police.wanted === 0) this.escapes += 1;
+    this._prevWanted = this.police.wanted;
+    // police ramming: a cruiser pressed against the player's car hurts
+    this._ramCooldown = Math.max(0, this._ramCooldown - dt);
+    if (p.inVehicle && this.police.wanted > 0 && this._ramCooldown <= 0) {
+      for (const cop of this.police.cars) {
+        const d = Math.hypot(cop.x - p.x, cop.z - p.z);
+        if (d < 3.4 && Math.abs(cop.speed) > 6) {
+          const cond = Math.max(0, this.vehicleHealth(p.inVehicle) - 6);
+          this.vehicleCondition.set(p.inVehicle, cond);
+          this.damagePlayer(6);
+          this._ramCooldown = 1;
+          break;
+        }
+      }
+    }
+    // slow health regen while the heat is off
+    if (this.police.wanted === 0 && this.health > 0 && this.health < 100) {
+      this.health = Math.min(100, this.health + 2 * dt);
+    }
     if (!this.shotMode) this.missions.update(dt);
     else this.missions.update(0); // frozen timers in shot mode, beacon still animates
     this.combat.update(dt);
     this.dust.update(dt);
     this.world.update(dt);
 
-    // camera
+    // camera — staged chase shot tracks head-on: the camera stays ahead of
+    // the car looking back at it, so the pursuing cruisers stay in frame
+    // behind it no matter which avenue the autopilot takes
+    if (this.shotMode && this.shotName === 'chase' && p.inVehicle) {
+      p.camYaw = p.inVehicle.heading + Math.PI;
+    }
     const focus = p.inVehicle ? p.inVehicle : p;
     p.updateCamera(dt, this.camera, focus, !!p.inVehicle);
     this.combat.applyShake(this.camera);

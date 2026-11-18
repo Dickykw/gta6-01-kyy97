@@ -159,11 +159,12 @@ export function createWorld(scene, seed) {
   // ---- sky dome (warm sunset gradient) + sun disc + clouds ----
   const skyTex = canvasTexture(1024, 512, (g, W, H) => {
     const grad = g.createLinearGradient(0, 0, 0, H);
-    grad.addColorStop(0, '#6fb3dd');
-    grad.addColorStop(0.45, '#a8d3e8');
-    grad.addColorStop(0.72, '#ffd9a0');
-    grad.addColorStop(0.88, '#ffb37a');
-    grad.addColorStop(1, '#f2a06a');
+    grad.addColorStop(0, '#5a6fc0');
+    grad.addColorStop(0.38, '#9a7ec4');
+    grad.addColorStop(0.6, '#e8937a');
+    grad.addColorStop(0.78, '#ffb37a');
+    grad.addColorStop(0.92, '#ff8f5e');
+    grad.addColorStop(1, '#f2703f');
     g.fillStyle = grad; g.fillRect(0, 0, W, H);
     g.fillStyle = 'rgba(255,255,255,0.75)';
     for (let i = 0; i < 14; i++) {
@@ -177,18 +178,18 @@ export function createWorld(scene, seed) {
   );
   group.add(sky);
   const sun = new THREE.Mesh(
-    new THREE.CircleGeometry(26, 32),
+    new THREE.CircleGeometry(38, 32),
     new THREE.MeshBasicMaterial({ color: 0xfff2c0, fog: false, transparent: true, opacity: 0.95 }),
   );
-  sun.position.set(-420, 95, -60); sun.lookAt(0, 60, 0);
+  sun.position.set(-420, 55, -60); sun.lookAt(0, 40, 0);
   group.add(sun);
-  scene.fog = new THREE.Fog(0xf2c491, 180, 520);
+  scene.fog = new THREE.Fog(0xef9e63, 180, 520);
 
   // ---- lighting ----
   const hemi = new THREE.HemisphereLight(0xbfd9ee, 0x8a6f52, 0.75);
   scene.add(hemi);
   const sunLight = new THREE.DirectionalLight(0xffe3b3, 2.4);
-  sunLight.position.set(-160, 140, 60);
+  sunLight.position.set(-170, 110, 70); // lower sun: longer sunset shadows
   sunLight.castShadow = true;
   sunLight.shadow.mapSize.set(2048, 2048);
   sunLight.shadow.camera.left = -160; sunLight.shadow.camera.right = 160;
@@ -240,6 +241,17 @@ export function createWorld(scene, seed) {
   const leafMats = [0x4f8a3d, 0x5f9a44, 0x3f7a35].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 1 }));
   const poleMat = new THREE.MeshStandardMaterial({ color: 0x2e3438, roughness: 0.6, metalness: 0.5 });
   const lampGlowMat = new THREE.MeshStandardMaterial({ color: 0xffe9a8, emissive: 0xffc95e, emissiveIntensity: 1.6 });
+  const prismGeo = new THREE.CylinderGeometry(1, 1, 1, 3, 1); // triangular prism (gable roof), scaled per roof
+  const crownGeo = new THREE.IcosahedronGeometry(1, 0); // leafy crown lobe, scaled per tree
+  const tileMat = new THREE.MeshStandardMaterial({ color: 0x9a5a44, roughness: 0.85 });
+  const gardenMat = new THREE.MeshStandardMaterial({ color: 0x5f8f46, roughness: 1 });
+  const glassMat = new THREE.MeshStandardMaterial({ color: 0x2a4a5e, roughness: 0.15, metalness: 0.5 });
+  const doorMat = new THREE.MeshStandardMaterial({ color: 0x2e2620, roughness: 0.7 });
+  const frameMat = new THREE.MeshStandardMaterial({ color: 0x3a3230, roughness: 0.8 });
+  const benchMat = new THREE.MeshStandardMaterial({ color: 0x7a5a38, roughness: 0.9 });
+  const awningMats = [0xc0392b, 0x2e6b6b, 0xe8a800, 0x28455e].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.85 }));
+  const ventGeo = new THREE.CylinderGeometry(0.3, 0.38, 0.6, 10);
+  const legGeo = new THREE.CylinderGeometry(0.09, 0.11, 0.5, 8);
 
   function addBox(mat, w, h, d, x, y, z, ry = 0, shadow = true) {
     const m = new THREE.Mesh(boxGeo, mat);
@@ -248,6 +260,55 @@ export function createWorld(scene, seed) {
     group.add(m); return m;
   }
   function addCollider(x, z, hx, hz) { colliders.push({ x, z, hx, hz }); }
+
+  // leafy crown: 2-3 overlapping icosahedra of different sizes, not one ball
+  function addTree(tx, tz, s) {
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.22 * s, 0.36 * s, 2.4 * s, 8), trunkMat);
+    trunk.position.set(tx, 1.2 * s, tz); trunk.castShadow = true; group.add(trunk);
+    const n = randInt(rng, 2, 3);
+    for (let k = 0; k < n; k++) {
+      const crown = new THREE.Mesh(crownGeo, pick(rng, leafMats));
+      crown.scale.setScalar(randRange(rng, 1.1, 1.8) * s);
+      crown.position.set(tx + randRange(rng, -0.7, 0.7) * s, (2.9 + k * 0.55) * s, tz + randRange(rng, -0.7, 0.7) * s);
+      crown.castShadow = true; group.add(crown);
+    }
+  }
+
+  // slatted bench: 3 seat slats with gaps, tilted backrest slats, cylinder legs
+  function addBench(bx2, bz2, ry) {
+    const b = new THREE.Group();
+    b.position.set(bx2, 0, bz2); b.rotation.y = ry;
+    const slat = (w, h, d, x, y, z, rx = 0) => {
+      const m = new THREE.Mesh(boxGeo, benchMat);
+      m.scale.set(w, h, d); m.position.set(x, y, z); m.rotation.x = rx;
+      m.castShadow = true; m.receiveShadow = true; b.add(m);
+    };
+    slat(2.4, 0.07, 0.22, 0, 0.55, -0.27);
+    slat(2.4, 0.07, 0.22, 0, 0.55, 0);
+    slat(2.4, 0.07, 0.22, 0, 0.55, 0.27);
+    slat(2.4, 0.16, 0.06, 0, 0.85, -0.44, -0.32);
+    slat(2.4, 0.16, 0.06, 0, 1.08, -0.51, -0.32);
+    for (const sx of [-0.95, 0.95]) {
+      const leg = new THREE.Mesh(legGeo, poleMat);
+      leg.position.set(sx, 0.25, 0); leg.castShadow = true; b.add(leg);
+      const post = new THREE.Mesh(boxGeo, benchMat);
+      post.scale.set(0.08, 0.62, 0.08); post.position.set(sx, 0.85, -0.42); post.castShadow = true; b.add(post);
+    }
+    group.add(b);
+  }
+
+  // palm: leaning trunk + drooping frond cones (never a box)
+  function addPalm(px2, pz2, s = 1) {
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.22 * s, 0.34 * s, 5.5 * s, 8), trunkMat);
+    trunk.position.set(px2, 2.75 * s, pz2); trunk.rotation.z = 0.12; trunk.castShadow = true; group.add(trunk);
+    for (let f = 0; f < 5; f++) {
+      const frond = new THREE.Mesh(new THREE.ConeGeometry(0.7 * s, 3.4 * s, 6), leafMats[f % 3]);
+      const a = (f / 5) * Math.PI * 2;
+      frond.position.set(px2 + Math.cos(a) * 1.4 * s, 5.6 * s, pz2 + Math.sin(a) * 1.4 * s);
+      frond.rotation.set(Math.sin(a) * 0.9, 0, Math.cos(a) * 0.9);
+      group.add(frond);
+    }
+  }
 
   // ---- buildings ----
   const plazaBlock = { bx: 1, bz: 1 };
@@ -273,25 +334,104 @@ export function createWorld(scene, seed) {
       const mat = facadeMats[typeIdx];
       const tex = mat.map;
       tex.repeat.set(Math.max(1, Math.round(w / 7)), Math.max(1, Math.round(h / 7)));
-      const b = addBox(mat, w, h, d, cx, h / 2, cz);
-      b.material = mat;
-      // parapet roof + rooftop props
-      addBox(i % 2 ? roofMat : roofMat2, w + 0.4, 0.5, d + 0.4, cx, h + 0.25, cz);
-      if (rng() < 0.7) addBox(acMat, 1.6, 0.9, 1.2, cx + randRange(rng, -w / 4, w / 4), h + 0.9, cz + randRange(rng, -d / 4, d / 4));
-      if (rng() < 0.35) {
+      // tiered massing: distinct silhouette per kind, setbacks + cornice bands
+      const tierDefs =
+        type.kind === 'office' ? [{ wf: 1, hf: 0.55 }, { wf: 0.78, hf: 0.3 }, { wf: 0.55, hf: 0.15 }]
+        : type.kind === 'hotel' ? [{ wf: 1, hf: 0.35 }, { wf: 0.72, hf: 0.65 }]
+        : type.kind === 'shop' ? [{ wf: 1, hf: 1 }]
+        : [{ wf: 1, hf: 0.6 }, { wf: 0.75, hf: 0.4 }];
+      let y = 0;
+      let topW = w, topD = d;
+      for (let ti = 0; ti < tierDefs.length; ti++) {
+        const tw = w * tierDefs[ti].wf, td = d * tierDefs[ti].wf, th = h * tierDefs[ti].hf;
+        addBox(mat, tw, th, td, cx, y + th / 2, cz);
+        y += th;
+        topW = tw; topD = td;
+        if (ti < tierDefs.length - 1) {
+          // cornice band protruding at the setback
+          addBox(roofMat2, tw + 0.5, 0.45, td + 0.5, cx, y - 0.1, cz);
+        }
+      }
+      // roof: flat + parapet, pitched prism, rooftop garden, or office crown
+      const roofRoll = rng();
+      const roofStyle =
+        type.kind === 'shop' ? (roofRoll < 0.6 ? 'pitched' : 'flat')
+        : type.kind === 'office' ? (roofRoll < 0.7 ? 'flat' : 'crown')
+        : (roofRoll < 0.5 ? 'flat' : roofRoll < 0.75 ? 'pitched' : 'garden');
+      if (roofStyle === 'pitched') {
+        const roofH = randRange(rng, 1.8, 3);
+        const prism = new THREE.Mesh(prismGeo, i % 2 ? roofMat : tileMat);
+        if (topW >= topD) {
+          prism.rotation.z = Math.PI / 2;
+          prism.scale.set(roofH / 1.5, topW + 0.4, (topD + 0.4) / 1.732);
+        } else {
+          prism.rotation.set(0, Math.PI / 2, Math.PI / 2);
+          prism.scale.set(roofH / 1.5, topD + 0.4, (topW + 0.4) / 1.732);
+        }
+        prism.position.set(cx, h + roofH / 3, cz);
+        prism.castShadow = true; group.add(prism);
+      } else {
+        // thin roof slab + parapet strips around the edge
+        addBox(roofMat, topW + 0.2, 0.18, topD + 0.2, cx, h + 0.09, cz);
+        addBox(roofMat2, topW + 0.4, 0.55, 0.3, cx, h + 0.45, cz + topD / 2 + 0.05);
+        addBox(roofMat2, topW + 0.4, 0.55, 0.3, cx, h + 0.45, cz - topD / 2 - 0.05);
+        addBox(roofMat2, 0.3, 0.55, topD + 0.4, cx + topW / 2 + 0.05, h + 0.45, cz);
+        addBox(roofMat2, 0.3, 0.55, topD + 0.4, cx - topW / 2 - 0.05, h + 0.45, cz);
+        if (roofStyle === 'garden') {
+          addBox(gardenMat, topW - 1.5, 0.3, topD - 1.5, cx, h + 0.32, cz);
+          for (let k = 0; k < 3; k++) {
+            const shrub = new THREE.Mesh(crownGeo, pick(rng, leafMats));
+            shrub.scale.setScalar(randRange(rng, 0.5, 0.8));
+            shrub.position.set(cx + randRange(rng, -topW / 4, topW / 4), h + 0.7, cz + randRange(rng, -topD / 4, topD / 4));
+            shrub.castShadow = true; group.add(shrub);
+          }
+        } else if (roofStyle === 'crown') {
+          addBox(mat, topW * 0.5, 1.6, topD * 0.5, cx, h + 0.8, cz);
+          addBox(roofMat2, topW * 0.5 + 0.4, 0.35, topD * 0.5 + 0.4, cx, h + 1.7, cz);
+        }
+      }
+      // rooftop props (flat roofs only, so nothing pokes through a prism)
+      if (roofStyle !== 'pitched' && rng() < 0.7) {
+        const ax = cx + randRange(rng, -w / 4, w / 4), az = cz + randRange(rng, -d / 4, d / 4);
+        addBox(acMat, 1.6, 0.9, 1.2, ax, h + 0.9, az);
+        const vent = new THREE.Mesh(ventGeo, acMat);
+        vent.position.set(ax, h + 1.6, az); vent.castShadow = true; group.add(vent);
+      }
+      if (roofStyle !== 'pitched' && rng() < 0.35) {
         const tank = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, 2.2, 10), acMat);
         tank.position.set(cx - w / 4, h + 1.4, cz - d / 4); tank.castShadow = true; group.add(tank);
       }
-      // ground-floor shop front + sign on some buildings
+      // balcony on the base tier front (res / hotel)
+      if ((type.kind === 'res' || type.kind === 'hotel') && rng() < 0.5) {
+        const bw = w * tierDefs[0].wf, bd = d * tierDefs[0].wf;
+        const by = h * tierDefs[0].hf - 1.6;
+        const bxOff = randRange(rng, -bw / 4, bw / 4);
+        addBox(frameMat, 2.4, 0.12, 1.0, cx + bxOff, by, cz + bd / 2 + 0.5);
+        addBox(frameMat, 2.4, 0.5, 0.07, cx + bxOff, by + 0.35, cz + bd / 2 + 0.95);
+        addBox(frameMat, 0.07, 0.5, 1.0, cx + bxOff - 1.16, by + 0.35, cz + bd / 2 + 0.5);
+        addBox(frameMat, 0.07, 0.5, 1.0, cx + bxOff + 1.16, by + 0.35, cz + bd / 2 + 0.5);
+      }
+      // ground-floor storefront: glass + door frame + mullions + tilted awning
       if (type.kind === 'shop' || rng() < 0.3) {
         const sign = pick(rng, SHOP_SIGNS);
         const sm = new THREE.Mesh(
           new THREE.PlaneGeometry(7, 1.75),
           new THREE.MeshStandardMaterial({ map: signTexture(sign[0], sign[1], sign[2], sign[3]), emissive: 0xffffff, emissiveMap: signTexture(sign[0], sign[1], sign[2], sign[3]), emissiveIntensity: 0.25, roughness: 0.6 }),
         );
-        sm.position.set(cx, 3.4, cz + d / 2 + 0.06);
+        sm.position.set(cx, 4.5, cz + d / 2 + 0.06);
         group.add(sm);
-        addBox(new THREE.MeshStandardMaterial({ color: 0x3a3230, roughness: 0.8 }), w * 0.8, 0.35, 1.2, cx, 2.9, cz + d / 2 + 0.3);
+        addBox(glassMat, w * 0.62, 2.4, 0.14, cx - w * 0.12, 1.5, cz + d / 2 + 0.08);
+        addBox(doorMat, 1.3, 2.4, 0.12, cx + w * 0.32, 1.5, cz + d / 2 + 0.08);
+        addBox(frameMat, 0.12, 2.55, 0.14, cx + w * 0.32 - 0.71, 1.5, cz + d / 2 + 0.08);
+        addBox(frameMat, 0.12, 2.55, 0.14, cx + w * 0.32 + 0.71, 1.5, cz + d / 2 + 0.08);
+        addBox(frameMat, 1.54, 0.12, 0.14, cx + w * 0.32, 2.78, cz + d / 2 + 0.08);
+        addBox(frameMat, 0.12, 2.4, 0.1, cx - w * 0.12, 1.5, cz + d / 2 + 0.16);
+        addBox(frameMat, w * 0.8, 0.18, 0.14, cx, 0.32, cz + d / 2 + 0.08);
+        const awn = new THREE.Mesh(boxGeo, pick(rng, awningMats));
+        awn.scale.set(w * 0.8, 0.08, 1.5);
+        awn.position.set(cx, 3.15, cz + d / 2 + 0.75);
+        awn.rotation.x = 0.5;
+        awn.castShadow = true; awn.receiveShadow = true; group.add(awn);
       }
       addCollider(cx, cz, w / 2, d / 2);
     }
@@ -301,24 +441,28 @@ export function createWorld(scene, seed) {
   const plaza = blockSpan(1);
   const pcx = (plaza.lo + plaza.hi) / 2, pcz = (plaza.lo + plaza.hi) / 2;
   const towerMat = new THREE.MeshStandardMaterial({ color: 0xd9c9a8, roughness: 0.85 });
-  addBox(towerMat, 6, 20, 6, pcx, 10, pcz);
+  // stepped tower: wide low plinth, slimmer shaft with two setbacks + cornices
+  addBox(towerMat, 8, 3, 8, pcx, 1.5, pcz); // plinth (0-3)
+  addBox(towerMat, 5, 8, 5, pcx, 7, pcz); // shaft, lower tier (3-11)
+  addBox(roofMat2, 5.6, 0.5, 5.6, pcx, 11.25, pcz); // cornice
+  addBox(towerMat, 4, 6, 4, pcx, 14.5, pcz); // shaft, upper tier (11.5-17.5)
+  addBox(roofMat2, 4.6, 0.5, 4.6, pcx, 17.75, pcz); // cornice
   const clockTex = clockTexture();
-  for (const [dx, dz, ry] of [[0, 3.06, 0], [0, -3.06, Math.PI], [3.06, 0, Math.PI / 2], [-3.06, 0, -Math.PI / 2]]) {
-    const face = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 4.4), new THREE.MeshStandardMaterial({ map: clockTex, roughness: 0.6 }));
+  for (const [dx, dz, ry] of [[0, 2.06, 0], [0, -2.06, Math.PI], [2.06, 0, Math.PI / 2], [-2.06, 0, -Math.PI / 2]]) {
+    const face = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 3.4), new THREE.MeshStandardMaterial({ map: clockTex, roughness: 0.6 }));
     face.position.set(pcx + dx, 15.5, pcz + dz); face.rotation.y = ry; group.add(face);
   }
-  const roof = new THREE.Mesh(new THREE.ConeGeometry(4.6, 4.4, 4), new THREE.MeshStandardMaterial({ color: 0x8a4a3a, roughness: 0.8 }));
-  roof.position.set(pcx, 22.2, pcz); roof.rotation.y = Math.PI / 4; roof.castShadow = true; group.add(roof);
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(3.3, 3.6, 4), new THREE.MeshStandardMaterial({ color: 0x8a4a3a, roughness: 0.8 }));
+  roof.position.set(pcx, 19.8, pcz); roof.rotation.y = Math.PI / 4; roof.castShadow = true; group.add(roof);
+  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 2.6, 6), poleMat);
+  mast.position.set(pcx, 22, pcz); group.add(mast);
   const flag = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 1.4), new THREE.MeshStandardMaterial({ color: 0xff5f6d, side: THREE.DoubleSide, roughness: 0.8 }));
-  flag.position.set(pcx + 1.2, 25.5, pcz); group.add(flag);
-  addCollider(pcx, pcz, 3.2, 3.2);
-  // plaza benches + bollards
-  const benchMat = new THREE.MeshStandardMaterial({ color: 0x7a5a38, roughness: 0.9 });
+  flag.position.set(pcx + 1.2, 22.6, pcz); group.add(flag);
+  addCollider(pcx, pcz, 4.2, 4.2);
+  // plaza benches (slatted, facing the tower)
   for (let i = 0; i < 6; i++) {
     const a = (i / 6) * Math.PI * 2;
-    const bx2 = pcx + Math.cos(a) * 12, bz2 = pcz + Math.sin(a) * 12;
-    addBox(benchMat, 2.4, 0.35, 0.8, bx2, 0.55, bz2, -a);
-    addBox(poleMat, 0.25, 0.5, 0.25, bx2 - 1, 0.25, bz2);
+    addBench(pcx + Math.cos(a) * 12, pcz + Math.sin(a) * 12, -a - Math.PI / 2);
   }
   for (let i = 0; i < 10; i++) {
     const a = (i / 10) * Math.PI * 2;
@@ -355,16 +499,7 @@ export function createWorld(scene, seed) {
   addCollider(lx, lz, 3.6, 3.6);
   // beach palms near the lighthouse
   for (let i = 0; i < 5; i++) {
-    const px2 = SEA_X - 4 - rng() * 8, pz2 = -84 + i * 12 + rng() * 4;
-    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.34, 5.5, 8), trunkMat);
-    trunk.position.set(px2, 2.75, pz2); trunk.rotation.z = 0.12; trunk.castShadow = true; group.add(trunk);
-    for (let f = 0; f < 5; f++) {
-      const frond = new THREE.Mesh(new THREE.ConeGeometry(0.7, 3.4, 6), leafMats[i % 3]);
-      const a = (f / 5) * Math.PI * 2;
-      frond.position.set(px2 + Math.cos(a) * 1.4, 5.6, pz2 + Math.sin(a) * 1.4);
-      frond.rotation.set(Math.sin(a) * 0.9, 0, Math.cos(a) * 0.9);
-      group.add(frond);
-    }
+    addPalm(SEA_X - 4 - rng() * 8, -84 + i * 12 + rng() * 4, 1);
   }
 
   // ---- park block: trees, benches, fountain ----
@@ -374,14 +509,21 @@ export function createWorld(scene, seed) {
   fountain.position.set(pkx, 0.5, pkz); fountain.castShadow = true; group.add(fountain);
   const water = new THREE.Mesh(new THREE.CircleGeometry(4, 20), new THREE.MeshStandardMaterial({ color: 0x4fb8c8, roughness: 0.15, metalness: 0.2 }));
   water.rotation.x = -Math.PI / 2; water.position.set(pkx, 1.05, pkz); group.add(water);
+  // centre jet column + ball tip
+  const jet = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.45, 1.8, 10), new THREE.MeshStandardMaterial({ color: 0xcfc4ae, roughness: 0.8 }));
+  jet.position.set(pkx, 1.9, pkz); jet.castShadow = true; group.add(jet);
+  const jetTop = new THREE.Mesh(new THREE.SphereGeometry(0.5, 10, 8), new THREE.MeshStandardMaterial({ color: 0x4fb8c8, roughness: 0.15, metalness: 0.2 }));
+  jetTop.position.set(pkx, 3.05, pkz); group.add(jetTop);
   addCollider(pkx, pkz, 5, 5);
+  // park benches facing the fountain
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+    addBench(pkx + Math.cos(a) * 8.5, pkz + Math.sin(a) * 8.5, -a - Math.PI / 2);
+  }
   for (let i = 0; i < 10; i++) {
     const tx = randRange(rng, pk.lo + 3, pk.hi - 3), tz = randRange(rng, pr.lo + 3, pr.hi - 3);
     if (Math.abs(tx - pkx) < 7 && Math.abs(tz - pkz) < 7) continue;
-    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.4, 2.6, 8), trunkMat);
-    trunk.position.set(tx, 1.3, tz); trunk.castShadow = true; group.add(trunk);
-    const crown = new THREE.Mesh(new THREE.SphereGeometry(randRange(rng, 1.6, 2.4), 10, 8), pick(rng, leafMats));
-    crown.position.set(tx, 3.6, tz); crown.castShadow = true; group.add(crown);
+    addTree(tx, tz, randRange(rng, 0.9, 1.3));
   }
 
   // ---- street trees along sidewalks ----
@@ -393,10 +535,7 @@ export function createWorld(scene, seed) {
       let clash = false;
       for (const c of colliders) if (Math.abs(c.x - tx) < c.hx + 1 && Math.abs(c.z - tz) < c.hz + 1) { clash = true; break; }
       if (clash) continue;
-      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.32, 2.2, 8), trunkMat);
-      trunk.position.set(tx, 1.1, tz); trunk.castShadow = true; group.add(trunk);
-      const crown = new THREE.Mesh(new THREE.SphereGeometry(randRange(rng, 1.3, 1.9), 10, 8), pick(rng, leafMats));
-      crown.position.set(tx, 3, tz); crown.castShadow = true; group.add(crown);
+      addTree(tx, tz, randRange(rng, 0.8, 1.1));
     }
   }
 
@@ -408,11 +547,22 @@ export function createWorld(scene, seed) {
     if (lx2 > WORLD_MAX || lz2 > WORLD_MAX) continue;
     const pole = new THREE.Mesh(lampGeo, poleMat);
     pole.position.set(lx2, 2.6, lz2); pole.castShadow = true; group.add(pole);
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.1, 0.1), poleMat);
+    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.12, 1.6, 8), poleMat);
+    arm.rotation.z = Math.PI / 2; // tapered: thin end at the lamp head
     arm.position.set(lx2 - 0.8, 5.1, lz2); group.add(arm);
     const head = new THREE.Mesh(headGeo, lampGlowMat);
     head.position.set(lx2 - 1.6, 5.05, lz2); group.add(head);
     lampPositions.push({ x: lx2 - 1.6, z: lz2 });
+  }
+
+  // palms lining the main avenue (z = 0), both sidewalks — sunset boulevard
+  for (let v = -84; v <= 84; v += 24) {
+    for (const pz2 of [-8.5, 8.5]) {
+      let clash = false;
+      for (const c of colliders) if (Math.abs(c.x - v) < c.hx + 1 && Math.abs(c.z - pz2) < c.hz + 1) { clash = true; break; }
+      if (clash) continue;
+      addPalm(v + randRange(rng, -1.5, 1.5), pz2, randRange(rng, 0.9, 1.15));
+    }
   }
 
   // ---- billboards (original ads) ----
@@ -420,6 +570,9 @@ export function createWorld(scene, seed) {
     { x: 48, z: -102.5, ry: 0, text: 'SOLMARA BAY', bg: '#28455e', fg: '#ffd23c', sub: 'the coast is calling' },
     { x: -48, z: 102.5, ry: Math.PI, text: 'VANTARA GT', bg: '#5e2a68', fg: '#f2d7ff', sub: '0–100 in 3.1s' },
     { x: 102.5, z: 0, ry: -Math.PI / 2, text: 'CAFÉ LUMA', bg: '#7a4a2e', fg: '#ffe9c4', sub: 'open all night' },
+    { x: -102.5, z: -48, ry: Math.PI / 2, text: 'BAKERY SOL', bg: '#8a4a2e', fg: '#ffe9c4', sub: 'pan · bread · dawn' },
+    { x: 0, z: 102.5, ry: Math.PI, text: 'NEON BAR', bg: '#2a1a3a', fg: '#ff5fa2', sub: 'drinks · music' },
+    { x: 102.5, z: 48, ry: -Math.PI / 2, text: 'FISH MARKET', bg: '#2e6b6b', fg: '#dff5ef', sub: 'fresh catch daily' },
   ];
   for (const b of billboards) {
     const board = new THREE.Mesh(
@@ -427,7 +580,11 @@ export function createWorld(scene, seed) {
       new THREE.MeshStandardMaterial({ map: signTexture(b.text, b.bg, b.fg, b.sub), emissive: 0xffffff, emissiveMap: signTexture(b.text, b.bg, b.fg, b.sub), emissiveIntensity: 0.3, roughness: 0.6, side: THREE.DoubleSide }),
     );
     board.position.set(b.x, 7.5, b.z); board.rotation.y = b.ry; group.add(board);
-    addBox(poleMat, 0.5, 6, 0.5, b.x, 3, b.z);
+    const pax = Math.cos(b.ry), paz = -Math.sin(b.ry); // board width axis in world
+    for (const s of [-4, 4]) {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.34, 6, 10), poleMat);
+      post.position.set(b.x + pax * s, 3, b.z + paz * s); post.castShadow = true; group.add(post);
+    }
   }
 
   // ---- parked car spots (along the main avenue + plaza edges) ----
@@ -449,6 +606,21 @@ export function createWorld(scene, seed) {
     const m = new THREE.Mesh(boxGeo, skylineMat);
     m.scale.set(w, h, w); m.position.set(x, h / 2 - 2, z);
     group.add(m);
+    const roll = rng();
+    if (roll < 0.4) {
+      // setback cap on top
+      const cw = w * randRange(rng, 0.45, 0.65), ch = randRange(rng, 5, 12);
+      const cap2 = new THREE.Mesh(boxGeo, skylineMat);
+      cap2.scale.set(cw, ch, cw); cap2.position.set(x, h - 2 + ch / 2, z);
+      group.add(cap2);
+    } else if (roll < 0.65) {
+      // spire: thin cylinder + ball tip
+      const sh = randRange(rng, 8, 16);
+      const spire = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 1.1, sh, 8), skylineMat);
+      spire.position.set(x, h - 2 + sh / 2, z); group.add(spire);
+      const tip = new THREE.Mesh(new THREE.SphereGeometry(1.3, 8, 6), skylineMat);
+      tip.position.set(x, h - 2 + sh + 1, z); group.add(tip);
+    }
   }
 
   // ---- perimeter low wall / hedges on the land sides ----
@@ -456,6 +628,19 @@ export function createWorld(scene, seed) {
   addBox(wallMat, 2, 2.2, 210, WORLD_MAX + 2, 1.1, 0);
   addBox(wallMat, 210, 2.2, 2, 0, 1.1, WORLD_MAX + 2);
   addBox(wallMat, 210, 2.2, 2, 0, 1.1, -WORLD_MAX - 2);
+  // coping: wider cap plate along each wall top
+  addBox(wallMat, 2.7, 0.35, 212, WORLD_MAX + 2, 2.35, 0);
+  addBox(wallMat, 212, 0.35, 2.7, 0, 2.35, WORLD_MAX + 2);
+  addBox(wallMat, 212, 0.35, 2.7, 0, 2.35, -WORLD_MAX - 2);
+  // pillars with pyramid caps every ~30 m
+  const pillarGeo = new THREE.ConeGeometry(1.9, 1.2, 4);
+  for (let v = -90; v <= 90; v += 30) {
+    for (const [px3, pz3] of [[WORLD_MAX + 2, v], [v, WORLD_MAX + 2], [v, -WORLD_MAX - 2]]) {
+      addBox(wallMat, 2.8, 3, 2.8, px3, 1.5, pz3);
+      const cap3 = new THREE.Mesh(pillarGeo, wallMat);
+      cap3.position.set(px3, 3.6, pz3); cap3.rotation.y = Math.PI / 4; cap3.castShadow = true; group.add(cap3);
+    }
+  }
 
   let beamAngle = 0;
   return {

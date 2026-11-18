@@ -44,7 +44,7 @@ export class Traffic {
   _buildCars() {
     const rng = this.rng;
     const types = ['sedan', 'sedan', 'taxi', 'sedan', 'sport', 'taxi', 'truck', 'sedan'];
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 10; i++) {
       const bx = randInt(rng, 0, 3), bz = randInt(rng, 0, 3);
       if (bx === 1 && bz === 1) continue; // plaza has no road loop
       const type = types[i % types.length];
@@ -61,7 +61,7 @@ export class Traffic {
 
   _buildPeds() {
     const rng = this.rng;
-    for (let i = 0; i < 16; i++) {
+    for (let i = 0; i < 24; i++) {
       const bx = randInt(rng, 0, 3), bz = randInt(rng, 0, 3);
       const s = blockSpan(bx), t = blockSpan(bz);
       // sidewalk rectangle just outside the block

@@ -2,6 +2,7 @@
 // the scripted self-test (?selftest=1). Every shot plays the real systems forward
 // from a staged state, so the frame is what the game really looks like.
 import { dist2 } from './util.js';
+import { MISSION_DEFS } from './missions.js';
 
 /** Step the live systems forward N fixed steps (traffic moves, dust settles). */
 function stepWorld(game, seconds) {
@@ -55,9 +56,12 @@ export function stageShot(name, game) {
     setCamera(game, 0.15, 0.3, 9, car);
     game.hud.toast('Antar paket ke Hotel Marina — 88m');
   } else if (name === 'chase') {
-    // mission 4 escape: wanted 2, two cruisers closing in behind the player car
+    // mission 4 escape: wanted 2, two cruisers closing in behind the player car.
+    // Staged on a palm-free stretch of the main avenue (x=-24: palms sit at
+    // x=-36/-12) with the camera EAST of the car looking west, so the player
+    // car is centre-frame and both cruisers trail behind it in frame.
     const car = game.parkedCars.find((c) => c.type === 'sedan');
-    car.x = -20; car.z = 0; car.heading = 0; car.speed = 22;
+    car.x = -24; car.z = 0; car.heading = 0; car.speed = 22;
     putPlayerInCar(game, car);
     game.missions.index = 3;
     game.missions.start(3);
@@ -72,35 +76,42 @@ export function stageShot(name, game) {
       c.mesh.position.set(c.x, 0, c.z); c.mesh.rotation.y = c.heading;
     });
     stepWorld(game, 1.5);
-    setCamera(game, Math.PI / 2, 0.3, 15, car); // side-tracking view: player car + cruisers behind it in frame
+    setCamera(game, Math.PI, 0.25, 17, car); // starting pose; the loop then tracks head-on (see main.js) so the cruisers stay in frame
   } else if (name === 'complete') {
     // mission complete: money in, toast + panel proof, Dario by the red Vantara GT
-    // on the avenue with the clock tower behind and a cruiser passing
+    // at the plaza edge with the clock tower behind (left) and a cruiser passing
+    // on the avenue behind him (right). NOTE: def must be a real mission def —
+    // the HUD reads def.dropoff.label on every update, and a hand-made def
+    // without dropoff threw and blanked the whole frame.
     game.money = 350;
-    game.missions.index = 1;
+    game.missions.index = 0;
     game.missions.completed = 1;
     game.missions.state = 'complete';
-    game.missions.def = { title: 'Paket untuk Madame Luma', reward: 350 };
-    placePlayerOnFoot(game, 0, 14, Math.PI / 2);
-    // a cruiser passing on the avenue with lights on, traffic around the plaza
+    game.missions.def = MISSION_DEFS[0];
+    placePlayerOnFoot(game, -7, -19, (Math.PI * 3) / 4);
+    // a cruiser on the avenue north of the player, facing south (toward camera),
+    // lights on, traffic around the plaza
     game.police.setWanted(1);
     game.police.update(0.1, { x: game.player.x, z: game.player.z }, 0, game.world.colliders, game.allVehicles, null);
     if (game.police.cars[0]) {
       const c = game.police.cars[0];
-      c.x = -16; c.z = 2; c.heading = -0.4; c.speed = 0; // parked cruiser, lights flashing (held by shot mode)
+      c.x = -2; c.z = -32; c.heading = -Math.PI / 2; c.speed = 0; // held by shot mode, lights flashing
       c.mesh.position.set(c.x, 0, c.z); c.mesh.rotation.y = c.heading; // mesh only syncs in update(), which hold skips
     }
     stepWorld(game, 2);
-    setCamera(game, Math.PI / 2, 0.3, 10, game.player);
+    setCamera(game, 2.35, 0.3, 8.5, game.player); // close enough that the foreground is plaza, not empty road
     game.hud.toast('MISI SELESAI — Paket untuk Madame Luma · +$350', 60000);
   } else {
     // hero (default): Dario on foot at the (0,0) intersection, looking north-west
-    // down at the Plaza Mar clock tower, beacon + sea beyond it, traffic crossing
+    // down at the Plaza Mar clock tower, beacon + sea beyond it, traffic crossing.
+    // Yaw 2.75 (not 2.35) pushes the tower right-of-centre so it no longer
+    // dominates the middle of the frame; low pitch + long distance keep the
+    // clock face (y 15.5) inside the top of the frame instead of cropping it.
     placePlayerOnFoot(game, -4, -4, (Math.PI * 3) / 4);
     game.missions.start(0);
     game.acceptMission();
     stepWorld(game, 3);
-    setCamera(game, 2.35, 0.36, 13.5, game.player);
+    setCamera(game, 2.75, 0.18, 18, game.player);
     game.hud.setCrosshair(false);
   }
   game.hud.update(0, {

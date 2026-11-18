@@ -2,7 +2,7 @@
 // Bison truck, Vantara GT sport, Solmara PD cruiser) and arcade driving — responsive
 // acceleration, handbrake drift, skid dust, smooth follow camera.
 import * as THREE from 'three';
-import { clamp, angleDiff, softDotTexture } from './util.js';
+import { clamp, angleDiff, softDotTexture, canvasTexture } from './util.js';
 
 export const VEHICLE_TYPES = {
   sedan: { name: 'Kestrel S', maxSpeed: 27, accel: 15, turn: 1.9, length: 4.4, width: 1.9, colors: [0x2e5f8a, 0x8a2e2e, 0x3a3f45, 0xc8c2b4, 0x4a6b4f] },
@@ -28,84 +28,217 @@ export function createCarMesh(type, color) {
   const L = spec.length, W = spec.width;
   const bodyH = type === 'sport' ? 0.55 : type === 'truck' ? 0.9 : 0.7;
   const bodyY = type === 'sport' ? 0.42 : 0.55;
+  const isTruck = type === 'truck';
+  const isSport = type === 'sport';
+  const wx = L * 0.32, wz = W / 2 + 0.02;
 
-  const body = new THREE.Mesh(new THREE.BoxGeometry(L, bodyH, W), paint);
-  body.position.y = bodyY; body.castShadow = true; body.receiveShadow = true;
-  g.add(body);
-  // hood / trunk shaping: a lower front nose box
-  const nose = new THREE.Mesh(new THREE.BoxGeometry(L * 0.16, bodyH * 0.7, W * 0.96), paint);
-  nose.position.set(L * 0.5, bodyY - 0.05, 0); nose.castShadow = true; g.add(nose);
+  const add = (mesh, x, y, z) => { mesh.position.set(x, y, z); mesh.castShadow = true; g.add(mesh); return mesh; };
+  // Half-cylinder shell, axis along Z, dome on top (theta PI/2..3PI/2 -> y >= 0
+  // after rotateX). Used for wheel-arch fenders and police light lenses.
+  const archGeo = (r, len, open = true) => {
+    const geo = new THREE.CylinderGeometry(r, r, len, 14, 1, open, Math.PI / 2, Math.PI);
+    geo.rotateX(Math.PI / 2);
+    return geo;
+  };
+  const fenderMat = new THREE.MeshStandardMaterial({ color, roughness: 0.35, metalness: 0.55, side: THREE.DoubleSide });
+  const bodyBaseY = bodyY - bodyH / 2; // world y of the body shell bottom
+  const sideX = W * 0.42 + 0.05; // half-width of the bevelled body shell side
+  // Side-profile shape extruded across the width, bevelled edges -> a sculpted
+  // body shell (sloped hood, beltline, rear deck) instead of a plain box.
+  // pts are [x, y] in the shape plane; the mesh is centred on z = 0.
+  const profileShell = (pts, depth, mat, bevel = 0.05) => {
+    const s = new THREE.Shape();
+    s.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) s.lineTo(pts[i][0], pts[i][1]);
+    s.closePath();
+    const geo = new THREE.ExtrudeGeometry(s, { depth, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 2, steps: 1 });
+    geo.translate(0, 0, -depth / 2);
+    const m = new THREE.Mesh(geo, mat);
+    m.castShadow = true; m.receiveShadow = true;
+    return m;
+  };
 
-  if (type === 'truck') {
-    const cab = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.1, W * 0.94), paint);
-    cab.position.set(L * 0.32, bodyY + 0.85, 0); cab.castShadow = true; g.add(cab);
-    const shield = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.8, W * 0.8), glassMat);
-    shield.position.set(L * 0.32 + 0.72, bodyY + 0.85, 0); g.add(shield);
-    const cargo = new THREE.Mesh(new THREE.BoxGeometry(L * 0.52, 1.5, W * 0.98), new THREE.MeshStandardMaterial({ color: 0xcfc8b8, roughness: 0.7, metalness: 0.2 }));
-    cargo.position.set(-L * 0.2, bodyY + 0.95, 0); cargo.castShadow = true; g.add(cargo);
-  } else {
-    const cabLen = type === 'sport' ? L * 0.42 : L * 0.48;
-    const cab = new THREE.Mesh(new THREE.BoxGeometry(cabLen, 0.55, W * 0.86), glassMat);
-    cab.position.set(type === 'sport' ? -L * 0.06 : -L * 0.04, bodyY + bodyH / 2 + 0.24, 0);
-    cab.castShadow = true; g.add(cab);
-    const roof = new THREE.Mesh(new THREE.BoxGeometry(cabLen * 0.92, 0.08, W * 0.8), paint);
-    roof.position.set(cab.position.x, bodyY + bodyH / 2 + 0.55, 0); g.add(roof);
+  // sculpted lower body: side profile with sloped hood + rear deck, bevelled sides
+  const prof = isTruck
+    ? [[0.5 * L, 0.05 * bodyH], [0.5 * L, 0.55 * bodyH], [0.3 * L, 0.95 * bodyH], [-0.5 * L, 0.95 * bodyH], [-0.5 * L, 0.05 * bodyH]]
+    : isSport
+      ? [[0.5 * L, 0.04 * bodyH], [0.5 * L, 0.38 * bodyH], [0.1 * L, 0.82 * bodyH], [-0.32 * L, 0.88 * bodyH], [-0.5 * L, 0.78 * bodyH], [-0.5 * L, 0.04 * bodyH]]
+      : [[0.5 * L, 0.04 * bodyH], [0.5 * L, 0.45 * bodyH], [0.18 * L, 0.9 * bodyH], [-0.3 * L, 0.95 * bodyH], [-0.5 * L, 0.85 * bodyH], [-0.5 * L, 0.04 * bodyH]];
+  const bodyShell = profileShell(prof, W * 0.84, paint);
+  bodyShell.position.y = bodyBaseY;
+  g.add(bodyShell);
+  // hood lid: thin panel hugging the sloped hood line (front edge dipped)
+  if (!isTruck) {
+    const hoodLen = isSport ? L * 0.34 : L * 0.27;
+    const hood = new THREE.Mesh(new THREE.BoxGeometry(hoodLen, 0.04, W * 0.88), paint);
+    hood.rotation.z = -0.2;
+    add(hood, L * 0.33, bodyY + 0.19 * bodyH + 0.01, 0);
   }
 
-  // wheels with hubcaps
+  // wheel-arch fenders: open half-cylinder shells curving over each wheel
+  for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+    const fender = new THREE.Mesh(archGeo(0.43, 0.34), fenderMat);
+    fender.position.set(sx * wx, 0.36, sz * wz);
+    g.add(fender);
+  }
+
+  if (isTruck) {
+    // sculpted cab: side profile with sloped front, flat roof, vertical back
+    const cabProf = [[0.75, 0.02], [0.75, 0.55], [0.45, 1.08], [-0.75, 1.08], [-0.75, 0.02]];
+    const cab = profileShell(cabProf, W * 0.86, paint);
+    cab.position.set(L * 0.32, bodyY + 0.3, 0);
+    g.add(cab);
+    // sloped windshield: thin glass panel on the cab's front slope (~29 deg)
+    const shield = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.66, W * 0.78), glassMat);
+    shield.rotation.z = 0.51;
+    add(shield, L * 0.32 + 0.62, bodyY + 1.15, 0);
+    // bed + curved tarp cover: half-cylinder dome, squashed flat, over the bed
+    const cargo = new THREE.Mesh(new THREE.BoxGeometry(L * 0.52, 1.0, W * 0.98), new THREE.MeshStandardMaterial({ color: 0xcfc8b8, roughness: 0.7, metalness: 0.2 }));
+    add(cargo, -L * 0.2, bodyY + 0.7, 0);
+    const domeGeo = new THREE.CylinderGeometry(W * 0.44, W * 0.44, L * 0.52, 16, 1, false, 0, Math.PI);
+    domeGeo.rotateZ(Math.PI / 2); // axis along X, dome on top
+    const dome = new THREE.Mesh(domeGeo, new THREE.MeshStandardMaterial({ color: 0x8a8272, roughness: 0.8, side: THREE.DoubleSide }));
+    dome.scale.y = 0.55;
+    add(dome, -L * 0.2, bodyY + 1.2, 0);
+    // truck mirrors on stalks (cab half-width = W*0.43 + bevel)
+    const cabSide = W * 0.43 + 0.05;
+    for (const sz of [-1, 1]) {
+      const stalk = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.04, 0.2), darkMat);
+      add(stalk, L * 0.32 + 0.6, bodyY + 1.05, sz * (cabSide + 0.06));
+      const mirror = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.18, 0.05), paint);
+      add(mirror, L * 0.32 + 0.6, bodyY + 1.1, sz * (cabSide + 0.16));
+    }
+  } else {
+    const cabLen = isSport ? L * 0.42 : L * 0.48;
+    const cabH = isSport ? 0.45 : 0.55;
+    const cabX = isSport ? -L * 0.1 : -L * 0.04;
+    const cabBaseY = bodyY + bodyH / 2 - 0.03;
+    // greenhouse: glass side profile — sloped windshield (~29 deg from vertical),
+    // flat roof, sloped rear window — extruded across the width, bevelled
+    const ghProf = [[0.5 * cabLen, 0], [0.36 * cabLen, cabH], [-0.3 * cabLen, cabH], [-0.5 * cabLen, 0]];
+    const cab = profileShell(ghProf, W * 0.76, glassMat, 0.04);
+    cab.position.set(cabX, cabBaseY, 0);
+    g.add(cab);
+    // roof plate on the flat top of the greenhouse
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(cabLen * 0.66, 0.06, W * 0.78), paint);
+    add(roof, cabX + 0.03 * cabLen, cabBaseY + cabH + 0.03, 0);
+    // side mirrors on thin stalks (greenhouse half-width = W*0.38 + bevel)
+    const cabSide = W * 0.38 + 0.04;
+    for (const sz of [-1, 1]) {
+      const stalk = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.04, 0.16), darkMat);
+      add(stalk, cabX + cabLen / 2 - 0.12, cabBaseY + cabH / 2 - 0.12, sz * (cabSide + 0.06));
+      const mirror = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.13, 0.05), paint);
+      add(mirror, cabX + cabLen / 2 - 0.12, cabBaseY + cabH / 2 - 0.08, sz * (cabSide + 0.15));
+    }
+    // door seams (thin dark vertical insets) + side skirts, on the shell side
+    for (const sz of [-1, 1]) {
+      for (const dx of [-0.55, 0.45]) {
+        const seam = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.44, 0.02), darkMat);
+        seam.position.set(cabX + dx, bodyY + 0.02, sz * (sideX + 0.006));
+        g.add(seam);
+      }
+      const skirt = new THREE.Mesh(new THREE.BoxGeometry(L * 0.62, 0.1, 0.05), darkMat);
+      add(skirt, -L * 0.03, bodyY - bodyH / 2 + 0.03, sz * (sideX + 0.005));
+    }
+  }
+
+  // wheels with hubcaps (pivot children MUST stay exactly [tire, hub])
   const wheels = [], steerWheels = [];
   const wheelGeo = new THREE.CylinderGeometry(0.36, 0.36, 0.28, 14);
   wheelGeo.rotateX(Math.PI / 2);
   const hubGeo = new THREE.CylinderGeometry(0.18, 0.18, 0.3, 10);
   hubGeo.rotateX(Math.PI / 2);
-  const wx = L * 0.32, wz = W / 2 + 0.02;
   for (const [sx, sz, front] of [[1, 1, true], [1, -1, true], [-1, 1, false], [-1, -1, false]]) {
     const pivot = new THREE.Group();
     pivot.position.set(sx * wx, 0.36, sz * wz);
     const tire = new THREE.Mesh(wheelGeo, tireMat); tire.castShadow = true;
     const hub = new THREE.Mesh(hubGeo, chromeMat);
+    // rim: ring + 5 spokes as children of the hub (they spin with the wheel;
+    // pivot children stay exactly [tire, hub])
+    const spokeGeo = new THREE.BoxGeometry(0.05, 0.2, 0.03);
+    spokeGeo.translate(0, 0.1, 0);
+    const rimGeo = new THREE.TorusGeometry(0.2, 0.035, 8, 20);
+    for (const rz of [-0.16, 0.16]) {
+      const rim = new THREE.Mesh(rimGeo, chromeMat);
+      rim.position.z = rz;
+      hub.add(rim);
+      for (let i = 0; i < 5; i++) {
+        const spoke = new THREE.Mesh(spokeGeo, chromeMat);
+        spoke.position.z = rz;
+        spoke.rotation.z = (i / 5) * Math.PI * 2;
+        hub.add(spoke);
+      }
+    }
     pivot.add(tire, hub);
     g.add(pivot);
     wheels.push(pivot);
     if (front) steerWheels.push(pivot);
   }
-  // headlights + taillights + grille + bumpers
+  // headlights + taillights + grille + rounded bumpers
+  // (body front face sits at L/2 + bevel, so lights sit proud of it)
   for (const sz of [-1, 1]) {
     const hl = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.16, 0.42), lightMat);
-    hl.position.set(L / 2 + 0.02, bodyY + 0.08, sz * (W / 2 - 0.35)); g.add(hl);
+    hl.position.set(L / 2 + 0.06, bodyY + 0.08, sz * (W / 2 - 0.35)); g.add(hl);
     const tl = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.14, 0.4), tailMat);
-    tl.position.set(-L / 2 - 0.02, bodyY + 0.08, sz * (W / 2 - 0.35)); g.add(tl);
+    tl.position.set(-L / 2 - 0.06, bodyY + 0.08, sz * (W / 2 - 0.35)); g.add(tl);
   }
   const grille = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.22, W * 0.5), chromeMat);
-  grille.position.set(L / 2 + 0.03, bodyY - 0.12, 0); g.add(grille);
-  const bumperF = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.18, W), darkMat);
-  bumperF.position.set(L / 2 - 0.02, bodyY - 0.22, 0); g.add(bumperF);
-  const bumperR = bumperF.clone(); bumperR.position.x = -L / 2 + 0.02; g.add(bumperR);
+  grille.position.set(L / 2 + 0.07, bodyY - 0.12, 0); g.add(grille);
+  // rounded bumpers: horizontal cylinders across the car width, not flat boxes
+  const bumpGeo = new THREE.CylinderGeometry(0.09, 0.09, W * 0.98, 12);
+  bumpGeo.rotateX(Math.PI / 2);
+  const bumperF = new THREE.Mesh(bumpGeo, darkMat);
+  add(bumperF, L / 2 + 0.02, bodyY - 0.22, 0);
+  const bumperR = new THREE.Mesh(bumpGeo, darkMat);
+  add(bumperR, -L / 2 - 0.02, bodyY - 0.22, 0);
 
   if (type === 'taxi') {
     const sign = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.18, 0.4), new THREE.MeshStandardMaterial({ color: 0x1c1c22, emissive: 0xe8a800, emissiveIntensity: 0.7 }));
     sign.position.set(-0.1, bodyY + bodyH / 2 + 0.66, 0); g.add(sign);
-    const door = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.5), new THREE.MeshStandardMaterial({ color: 0x1c1c22 }));
-    door.position.set(0.2, bodyY, W / 2 + 0.01); g.add(door);
+    // checker band along both doors
+    const checkerTex = canvasTexture(128, 16, (ctx, w, h) => {
+      const cell = 16;
+      for (let i = 0; i < w / cell; i++) {
+        ctx.fillStyle = i % 2 ? '#111111' : '#f5f5f5';
+        ctx.fillRect(i * cell, 0, cell, h);
+      }
+    });
+    const checkerMat = new THREE.MeshStandardMaterial({ map: checkerTex, roughness: 0.6 });
+    for (const sz of [-1, 1]) {
+      const band = new THREE.Mesh(new THREE.PlaneGeometry(L * 0.85, 0.18), checkerMat);
+      band.position.set(0, bodyY + 0.05, sz * (sideX + 0.012));
+      if (sz < 0) band.rotation.y = Math.PI;
+      g.add(band);
+    }
   }
   if (type === 'sport') {
-    const spoiler = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.06, W * 0.9), darkMat);
-    spoiler.position.set(-L / 2 + 0.05, bodyY + 0.42, 0); g.add(spoiler);
+    // bigger wing: wider blade, higher, on taller fins
+    const spoiler = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.05, W * 0.98), darkMat);
+    add(spoiler, -L / 2 + 0.02, bodyY + 0.58, 0);
     for (const sz of [-1, 1]) {
-      const fin = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.3, 0.06), darkMat);
-      fin.position.set(-L / 2 + 0.05, bodyY + 0.26, sz * (W * 0.42)); g.add(fin);
+      const fin = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.36, 0.06), darkMat);
+      add(fin, -L / 2 + 0.02, bodyY + 0.38, sz * (W * 0.44));
     }
   }
   if (type === 'police') {
-    const stripe = new THREE.Mesh(new THREE.BoxGeometry(L * 0.98, 0.16, W + 0.02), new THREE.MeshStandardMaterial({ color: 0x1c2a4a, roughness: 0.5 }));
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(L * 0.98, 0.16, W * 0.84 + 0.12), new THREE.MeshStandardMaterial({ color: 0x1c2a4a, roughness: 0.5 }));
     stripe.position.set(0, bodyY - 0.05, 0); g.add(stripe);
-    const bar = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.14, 1.1), darkMat);
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.16, 1.35), darkMat);
     bar.position.set(-0.1, bodyY + bodyH / 2 + 0.62, 0); g.add(bar);
-    const red = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.16, 0.5), new THREE.MeshStandardMaterial({ color: 0xff2222, emissive: 0xff2222, emissiveIntensity: 2 }));
-    red.position.set(-0.1, bodyY + bodyH / 2 + 0.62, -0.28); g.add(red);
-    const blue = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.16, 0.5), new THREE.MeshStandardMaterial({ color: 0x2244ff, emissive: 0x2244ff, emissiveIntensity: 2 }));
-    blue.position.set(-0.1, bodyY + bodyH / 2 + 0.62, 0.28); g.add(blue);
-    g.userData.lightRed = red; g.userData.lightBlue = blue;
+    // half-cylinder dome lenses over the bar (red left, blue right) — oversized
+    // so the flash reads at pursuit distance, not just up close
+    const lensGeo = archGeo(0.16, 0.62, false);
+    const red = new THREE.Mesh(lensGeo, new THREE.MeshStandardMaterial({ color: 0xff2222, emissive: 0xff2222, emissiveIntensity: 2 }));
+    red.position.set(-0.1, bodyY + bodyH / 2 + 0.69, -0.32); g.add(red);
+    const blue = new THREE.Mesh(lensGeo, new THREE.MeshStandardMaterial({ color: 0x2244ff, emissive: 0x2244ff, emissiveIntensity: 2 }));
+    blue.position.set(-0.1, bodyY + bodyH / 2 + 0.69, 0.32); g.add(blue);
+    // additive glow sprite above the bar, colour-driven by the siren flash in
+    // police.update — the flash halo is what reads as "police" from 40 m away
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: softDotTexture(), color: 0xff2222, transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending }));
+    glow.scale.set(2.8, 2.8, 1);
+    glow.position.set(-0.1, bodyY + bodyH / 2 + 1.0, 0);
+    g.add(glow);
+    g.userData.lightRed = red; g.userData.lightBlue = blue; g.userData.lightGlow = glow;
   }
   g.userData.spec = spec;
   return { group: g, wheels, steerWheels };

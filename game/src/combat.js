@@ -11,6 +11,9 @@ export class Combat {
     this.raycaster = new THREE.Raycaster();
     this.cooldown = 0;
     this.shake = 0;
+    this.weapon = 'Pistol'; // the only firearm; second slot is bare hands
+    this.ammo = 48; // live rounds for the pistol
+    this.ammoReserve = 96;
     this.flash = new THREE.PointLight(0xffc860, 0, 14);
     this.scene.add(this.flash);
     // tracer line (reused, fades fast)
@@ -50,12 +53,27 @@ export class Combat {
   /** Fire from the camera through the crosshair. Returns a hit description or null. */
   shoot(game) {
     if (this.cooldown > 0) return null;
+    if (this.ammo <= 0) {
+      // auto-reload from reserve when the magazine is empty
+      if (this.ammoReserve > 0) {
+        const take = Math.min(12, this.ammoReserve);
+        this.ammoReserve -= take; this.ammo += take;
+        this.cooldown = 0.6;
+        game.audio && game.audio.click();
+        return null;
+      }
+      return null;
+    }
+    this.ammo -= 1;
     this.cooldown = 0.28;
     this.shake = Math.max(this.shake, 0.35);
     const origin = this.camera.position.clone();
     const dir = new THREE.Vector3();
     this.camera.getWorldDirection(dir);
     this.raycaster.set(origin, dir);
+    // sprites in the targets (police light-bar glow) need the camera for their
+    // raycast — without it Sprite.raycast throws reading camera.matrixWorld
+    this.raycaster.camera = this.camera;
     this.raycaster.far = 90;
 
     // muzzle flash at the camera + tracer to the hit point
