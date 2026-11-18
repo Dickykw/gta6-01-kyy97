@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SOLMARA HEAT — Open World</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #f2c491; font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; }
+  canvas { display: block; }
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; color: #fff; }
+  #hud-top-left { position: absolute; top: 16px; left: 16px; max-width: 380px; }
+  #district { font-family: 'Arial Black', Arial, sans-serif; font-size: 15px; letter-spacing: 3px; color: #ffd23c; text-shadow: 0 2px 6px rgba(0,0,0,.7); }
+  #mission-box { margin-top: 6px; background: rgba(12,16,24,.72); border-left: 5px solid #ffd23c; border-radius: 6px; padding: 10px 14px; box-shadow: 0 4px 18px rgba(0,0,0,.35); }
+  #mission-title { font-family: 'Arial Black', Arial, sans-serif; font-size: 17px; color: #fff; }
+  #mission-text { font-size: 14px; line-height: 1.35; color: #e8e4da; margin-top: 3px; }
+  #mission-timer { font-size: 14px; font-weight: 800; color: #ffd23c; margin-top: 4px; }
+  #toast { margin-top: 10px; background: rgba(12,16,24,.8); border-radius: 6px; padding: 8px 12px; font-size: 14px; font-weight: 600; opacity: 0; transition: opacity .3s; box-shadow: 0 4px 14px rgba(0,0,0,.35); }
+  #hud-top-right { position: absolute; top: 16px; right: 16px; text-align: right; }
+  #money { font-family: 'Arial Black', Arial, sans-serif; font-size: 26px; color: #7dff8a; text-shadow: 0 2px 6px rgba(0,0,0,.8); }
+  #wanted { margin-top: 2px; font-size: 26px; letter-spacing: 2px; text-shadow: 0 2px 6px rgba(0,0,0,.8); }
+  #wanted .star { color: rgba(255,255,255,.28); }
+  #wanted .star.on { color: #ffd23c; }
+  #clock { font-size: 14px; font-weight: 700; color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,.8); }
+  #crosshair { display: none; position: absolute; left: 50%; top: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px; border: 2px solid #fff; border-radius: 50%; box-shadow: 0 0 6px rgba(0,0,0,.8); }
+  #prompt { display: none; position: absolute; left: 50%; bottom: 118px; transform: translateX(-50%); background: rgba(12,16,24,.8); border: 1px solid rgba(255,210,60,.7); border-radius: 6px; padding: 8px 16px; font-size: 15px; font-weight: 700; white-space: nowrap; }
+  #hud-bottom-left { position: absolute; left: 16px; bottom: 16px; }
+  #vehicle-name { font-size: 15px; font-weight: 800; letter-spacing: 1px; color: #ffd23c; text-shadow: 0 2px 5px rgba(0,0,0,.8); }
+  #speed { font-family: 'Arial Black', Arial, sans-serif; font-size: 34px; text-shadow: 0 2px 6px rgba(0,0,0,.8); }
+  #speed span { font-size: 15px; font-family: 'Segoe UI', Arial, sans-serif; font-weight: 600; }
+  #minimap { position: absolute; right: 16px; bottom: 16px; width: 220px; height: 220px; border-radius: 50%; border: 3px solid rgba(255,255,255,.85); box-shadow: 0 6px 24px rgba(0,0,0,.5); background: #2fa8a0; }
+  #overlay { display: none; position: fixed; inset: 0; background: linear-gradient(160deg, rgba(20,16,40,.82), rgba(60,20,10,.78)); align-items: center; justify-content: center; pointer-events: auto; z-index: 10; }
+  #overlay-card { max-width: 560px; margin: 24px; background: rgba(10,12,20,.88); border: 1px solid rgba(255,210,60,.5); border-radius: 14px; padding: 32px 36px; box-shadow: 0 20px 60px rgba(0,0,0,.6); text-align: center; }
+  #overlay-kicker { font-size: 13px; font-weight: 800; letter-spacing: 4px; color: #ffd23c; }
+  #overlay-title { font-family: 'Arial Black', Arial, sans-serif; font-size: 44px; line-height: 1.05; margin: 8px 0 12px; color: #fff; text-shadow: 0 4px 0 rgba(255,95,109,.55); }
+  #overlay-body p { font-size: 16px; line-height: 1.5; color: #e8e4da; margin: 8px 0; }
+  #overlay-body .reward { font-family: 'Arial Black', Arial, sans-serif; font-size: 20px; color: #7dff8a; }
+  #overlay-body .reward.big { font-size: 34px; }
+  #overlay-buttons { margin-top: 18px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+  .hud-btn { pointer-events: auto; cursor: pointer; font-family: 'Arial Black', Arial, sans-serif; font-size: 16px; padding: 12px 22px; border-radius: 8px; border: 2px solid #fff; background: transparent; color: #fff; }
+  .hud-btn.primary { background: #ffd23c; border-color: #ffd23c; color: #1c1c22; }
+  .hud-btn:hover { filter: brightness(1.12); }
+  #overlay-controls { margin-top: 18px; font-size: 13px; line-height: 1.6; color: #b8b2a4; }
+  #overlay-controls b { color: #ffd23c; }
+</style>
+</head>
+<body>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.min.js" } }
+</script>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
