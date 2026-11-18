@@ -1,8 +1,9 @@
 // Missions for Madame Luma: a state machine (briefing -> go_to -> objective ->
 // return/escape -> complete/failed) with a 3D beacon marker, HUD objective and timer.
-// Four story jobs, then repeatable free-roam deliveries.
+// Five story jobs, then repeatable free-roam deliveries.
 import * as THREE from 'three';
 import { mulberry32, randInt, pick, dist2, clamp, nearestRoadPoint } from './util.js';
+import { createPlayerMesh } from './player.js';
 
 export const MISSION_DEFS = [
   {
@@ -28,6 +29,13 @@ export const MISSION_DEFS = [
     id: 'lose-the-heat', title: 'Kabur dari Polisi', kind: 'escape',
     brief: 'Madame Luma: "Polisi sudah di ekormu, Dario. Hilang dari pandangan mereka — jangan sampai ketangkap."',
     timer: 90, reward: 600,
+  },
+  {
+    id: 'luma-taxi', title: 'Taksi Luma', kind: 'taxi',
+    brief: 'Madame Luma: "Dario, ada tamu menunggumu di Pasar Sol. Antar dia ke Marina — sopan, cepat, dan jangan bertanya urusan orang lain."',
+    pickup: { x: -48, z: 72, label: 'Pasar Sol' },
+    dropoff: { x: -96, z: -48, label: 'Marina' },
+    timer: 120, reward: 450,
   },
 ];
 
@@ -70,6 +78,7 @@ export class Missions {
     this.chaseHold = 0;
     this.escapeClear = 0;
     this.courier = null;
+    this.passenger = null; // taxi passenger mesh (kind 'taxi' only)
     this.beacon = makeBeacon(scene);
     this.onEvent = null; // (event, data) -> hud/audio hooks
   }
@@ -79,6 +88,7 @@ export class Missions {
 
   start(index = this.index) {
     this.index = index;
+    this._removePassenger();
     if (index >= MISSION_DEFS.length) return this.startFreeRoam();
     this.def = MISSION_DEFS[index];
     this.state = 'briefing';
@@ -99,6 +109,7 @@ export class Missions {
     }
     // escape has no fixed target: the beacon would sit on the player
     if (!this.def || this.def.kind !== 'escape') this._showBeacon();
+    if (this.def && this.def.kind === 'taxi') this._spawnPassenger();
     this.onEvent && this.onEvent('briefing', this.def);
   }
 
@@ -139,6 +150,28 @@ export class Missions {
     this.courier = null;
   }
 
+  /** Taxi passenger waiting at the pickup point (kind 'taxi' only). */
+  _spawnPassenger() {
+    this._removePassenger();
+    const built = createPlayerMesh();
+    // recolour the jacket so the passenger does not read as a Dario clone
+    built.group.traverse((m) => {
+      if (m.isMesh && m.material && m.material.color && m.material.color.getHex() === 0x2e4a5e) {
+        m.material = new THREE.MeshStandardMaterial({ color: 0xd98a2b, roughness: 0.9 });
+      }
+    });
+    built.group.position.set(this.target.x, 0, this.target.z);
+    built.group.rotation.y = Math.PI * 0.75; // facing the road, waiting
+    this.scene.add(built.group);
+    this.passenger = built.group;
+  }
+
+  _removePassenger() {
+    if (!this.passenger) return;
+    this.scene.remove(this.passenger);
+    this.passenger = null;
+  }
+
   _showBeacon() {
     if (!this.target) return;
     this.beacon.group.visible = true;
@@ -151,6 +184,7 @@ export class Missions {
     this.state = 'complete';
     this._hideBeacon();
     this._removeCourier();
+    this._removePassenger();
     this.completed += 1;
     this.game.money += reward;
     this.onEvent && this.onEvent('complete', { reward, title: this.currentTitle });
@@ -162,6 +196,7 @@ export class Missions {
     this.state = 'failed';
     this._hideBeacon();
     this._removeCourier();
+    this._removePassenger();
     this.onEvent && this.onEvent('failed', { reason });
   }
 
@@ -186,6 +221,9 @@ export class Missions {
     }
     if (this.def && this.def.kind === 'escape') {
       return `Kabur! Jangan terlihat polisi ${Math.max(0, 20 - this.escapeClear).toFixed(0)} detik`;
+    }
+    if (this.def && this.def.kind === 'taxi') {
+      return this.stage === 'go_to' ? `Jemput penumpang di ${this.target.label} — ${d}m` : `Antar penumpang ke ${this.target.label} — ${d}m`;
     }
     return this.stage === 'go_to' ? `Ambil paket — ${d}m` : `Antar paket ke tujuan — ${d}m`;
   }
@@ -253,7 +291,12 @@ export class Missions {
             const dest = this.def ? this.def.dropoff : this.freeJob.dropoff;
             this.target = { x: dest.x, z: dest.z, label: this.def ? this.def.dropoff.label : 'Tujuan antar' };
             this._showBeacon();
-            this.onEvent && this.onEvent('stage', 'Paket didapat — antar ke tujuan!');
+            if (this.def && this.def.kind === 'taxi') {
+              this._removePassenger(); // passenger "boards" at pickup
+              this.onEvent && this.onEvent('stage', 'Penumpang naik — antar ke Marina!');
+            } else {
+              this.onEvent && this.onEvent('stage', 'Paket didapat — antar ke tujuan!');
+            }
             this.game.audio && this.game.audio.pickup();
           }
         } else if (this.stage === 'return') {

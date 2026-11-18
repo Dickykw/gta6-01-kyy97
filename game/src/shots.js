@@ -21,6 +21,13 @@ function setCamera(game, yaw, pitch, dist, focus) {
   p.updateCamera(1, game.camera, focus, !!p.inVehicle);
 }
 
+/** Time-of-day preset for this shot. world.setTimeOfDay is the world
+ *  agent's API ('golden' | 'day' | 'dusk' | 'night'); guarded so a build
+ *  without it still stages with the default golden look. */
+function setTime(game, preset) {
+  if (game.world && typeof game.world.setTimeOfDay === 'function') game.world.setTimeOfDay(preset);
+}
+
 function placePlayerOnFoot(game, x, z, heading) {
   const p = game.player;
   if (p.inVehicle) p.exitVehicle();
@@ -43,9 +50,13 @@ export function stageShot(name, game) {
   game.hud.hideOverlay();
   game.money = 0;
   if (name === 'drive') {
-    // Dario driving the Vantara GT down the main avenue, traffic ahead
+    // DOWNTOWN, dusk: Dario driving the red Vantara GT east down avenue
+    // z=-48, towers on both sides, Hotel Marina beacon just ahead.
+    setTime(game, 'dusk');
     const car = game.plazaSportCar;
-    car.x = -58; car.z = 0; car.heading = 0; car.speed = 18;
+    car.x = -24; car.z = -49; car.heading = 0; car.speed = 18; // start 54 m west of
+    // the Hotel Marina beacon so it reads as a destination, not a blob in
+    // front of the car; z=-49 keeps the DOWNTOWN district label
     putPlayerInCar(game, car);
     game.missions.start(0);
     game.acceptMission();
@@ -53,15 +64,19 @@ export function stageShot(name, game) {
     game.missions.target = { x: 30, z: -54, label: 'Hotel Marina' };
     game.missions._showBeacon();
     stepWorld(game, 2);
-    setCamera(game, 0.15, 0.3, 9, car);
-    game.hud.toast('Antar paket ke Hotel Marina — 88m');
+    setCamera(game, 0.55, 0.32, 8.5, car); // 3/4 rear angle: the car's side profile reads, not just its roof
+    game.hud.toast('Antar paket ke Hotel Marina');
   } else if (name === 'chase') {
-    // mission 4 escape: wanted 2, two cruisers closing in behind the player car.
-    // Staged on a palm-free stretch of the main avenue (x=-24: palms sit at
-    // x=-36/-12) with the camera EAST of the car looking west, so the player
-    // car is centre-frame and both cruisers trail behind it in frame.
-    const car = game.parkedCars.find((c) => c.type === 'sedan');
-    car.x = -24; car.z = 0; car.heading = 0; car.speed = 22;
+    // PASAR SOL, night: mission 4 escape, wanted 2, two cruisers closing
+    // in behind the player car on road x=-48 beside the market block.
+    // Staged heading north, so the head-on camera (camYaw = heading + PI,
+    // tracked every frame in main.js) looks south down the road: player
+    // car centre-frame, both cruisers + market blocks behind it.
+    setTime(game, 'night');
+    const car = game.plazaSportCar; // the red Vantara GT reads at night; a dark sedan is a black blob
+    car.x = -49; car.z = 56; car.heading = Math.PI / 2; car.speed = 22; // x=-49, not
+    // -48: the road centreline itself reads as PERDAGANGAN in districtAt;
+    // 1 m west of it the player is in PASAR SOL while still on road x=-48
     putPlayerInCar(game, car);
     game.missions.index = 3;
     game.missions.start(3);
@@ -72,46 +87,61 @@ export function stageShot(name, game) {
       game.police.update(0.1, { x: car.x, z: car.z }, 0, game.world.colliders, game.allVehicles, null);
     }
     game.police.cars.forEach((c, i) => {
-      c.x = car.x - 14 - i * 9; c.z = (i === 0 ? 3 : -3); c.heading = 0; c.speed = 24;
+      c.x = car.x + (i === 0 ? 3 : -3); c.z = car.z + 10 + i * 9; c.heading = Math.PI / 2; c.speed = 24;
       c.mesh.position.set(c.x, 0, c.z); c.mesh.rotation.y = c.heading;
     });
     stepWorld(game, 1.5);
-    setCamera(game, Math.PI, 0.25, 17, car); // starting pose; the loop then tracks head-on (see main.js) so the cruisers stay in frame
+    setCamera(game, (Math.PI * 3) / 2, 0.25, 14, car); // starting pose = heading + PI; the loop then tracks head-on (see main.js)
+    // keep the shot-mode autopilot on roads around the market (main.js only
+    // initialises shotWps when unset): north up x=-48, then a road loop,
+    // so the chase never cuts across blocks after staging
+    game.shotWps = [{ x: -48, z: -96 }, { x: 48, z: -96 }, { x: 48, z: 96 }, { x: -48, z: 96 }];
+    game.shotWp = 0;
   } else if (name === 'complete') {
-    // mission complete: money in, toast + panel proof, Dario by the red Vantara GT
-    // at the plaza edge with the clock tower behind (left) and a cruiser passing
-    // on the avenue behind him (right). NOTE: def must be a real mission def —
+    // TAMAN SOL, day: mission complete, +$350, Dario on foot by the red
+    // Vantara GT in the park, fountain behind him, a cruiser on the west
+    // road (x=48) with lights on. NOTE: def must be a real mission def —
     // the HUD reads def.dropoff.label on every update, and a hand-made def
     // without dropoff threw and blanked the whole frame.
+    setTime(game, 'day');
     game.money = 350;
     game.missions.index = 0;
     game.missions.completed = 1;
     game.missions.state = 'complete';
     game.missions.def = MISSION_DEFS[0];
-    placePlayerOnFoot(game, -7, -19, (Math.PI * 3) / 4);
-    // a cruiser on the avenue north of the player, facing south (toward camera),
-    // lights on, traffic around the plaza
+    // park the Vantara GT broadside next to Dario (it lives at the plaza
+    // by default — teleport it here, mesh included). Both stand on the
+    // avenue's south edge (z=-51): the park's 10 RNG trees can occlude
+    // anything inside the block, but nothing stands between this camera
+    // and the pair — the fountain + trees are the backdrop, not the cover.
+    const gt = game.plazaSportCar;
+    gt.x = 66; gt.z = -51; gt.heading = Math.PI;
+    gt.mesh.position.set(gt.x, 0, gt.z); gt.mesh.rotation.y = gt.heading;
+    placePlayerOnFoot(game, 72, -51, -Math.PI / 2);
+    // a cruiser on the avenue west of the pair, facing south (toward
+    // camera), lights on, held by shot mode
     game.police.setWanted(1);
     game.police.update(0.1, { x: game.player.x, z: game.player.z }, 0, game.world.colliders, game.allVehicles, null);
     if (game.police.cars[0]) {
       const c = game.police.cars[0];
-      c.x = -2; c.z = -32; c.heading = -Math.PI / 2; c.speed = 0; // held by shot mode, lights flashing
+      c.x = 76; c.z = -54; c.heading = -Math.PI / 2; c.speed = 0; // held by shot mode, lights flashing — 19° right of the view axis, clear of the minimap
       c.mesh.position.set(c.x, 0, c.z); c.mesh.rotation.y = c.heading; // mesh only syncs in update(), which hold skips
     }
     stepWorld(game, 2);
-    setCamera(game, 2.35, 0.3, 8.5, game.player); // close enough that the foreground is plaza, not empty road
+    setCamera(game, Math.PI / 2, 0.22, 9, game.player); // near-level view: less road foreground, more park behind the pair
     game.hud.toast('MISI SELESAI — Paket untuk Madame Luma · +$350', 60000);
   } else {
-    // hero (default): Dario on foot at the (0,0) intersection, looking north-west
-    // down at the Plaza Mar clock tower, beacon + sea beyond it, traffic crossing.
-    // Yaw 2.75 (not 2.35) pushes the tower right-of-centre so it no longer
-    // dominates the middle of the frame; low pitch + long distance keep the
-    // clock face (y 15.5) inside the top of the frame instead of cropping it.
-    placePlayerOnFoot(game, -4, -4, (Math.PI * 3) / 4);
+    // hero (default): MARINA, golden hour — Dario on foot on the sand,
+    // facing the camera, boats + sea behind him. Camera ENE of Dario
+    // looking WSW (yaw 3.38): the three sailboats spread across the
+    // background; the lighthouse stays out of frame (it is 32 m tall and
+    // 11 m away — any camera near Dario makes it a cropped column).
+    setTime(game, 'golden');
+    placePlayerOnFoot(game, -108, -76, 0.24);
     game.missions.start(0);
     game.acceptMission();
     stepWorld(game, 3);
-    setCamera(game, 2.75, 0.18, 18, game.player);
+    setCamera(game, 3.38, 0.25, 10, game.player);
     game.hud.setCrosshair(false);
   }
   game.hud.update(0, {

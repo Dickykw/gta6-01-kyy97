@@ -6,7 +6,7 @@ import { mulberry32, randRange, randInt, pick, clamp, angleLerp, angleDiff, ROAD
 import { Vehicle, VEHICLE_TYPES } from './vehicle.js';
 import { createPlayerMesh } from './player.js';
 
-const SHIRTS = [0xd95f4b, 0x4b7fd9, 0x5fae5f, 0xe8c33c, 0x9a5fd9, 0xefefef, 0x2e3a45, 0xd98a4b, 0x6ec6c6, 0xc64b7a];
+const SHIRTS = [0xd95f4b, 0x4b7fd9, 0x5fae5f, 0xe8c33c, 0x9a5fd9, 0xefefef, 0x2e3a45, 0xd98a4b, 0x6ec6c6, 0xc64b7a, 0x2e8a6b, 0xe86a9a, 0x4a2e6b, 0x8a6b2e, 0x3a7a8a, 0xd94f30];
 const PANTS = [0x33455e, 0x2e2a26, 0x5a5a5a, 0x7a6a4a, 0x3a3f45];
 const SKINS = [0xc98e6a, 0x8a5a3c, 0xe8b98a, 0x6b4226, 0xd9a077];
 
@@ -43,10 +43,11 @@ export class Traffic {
 
   _buildCars() {
     const rng = this.rng;
-    const types = ['sedan', 'sedan', 'taxi', 'sedan', 'sport', 'taxi', 'truck', 'sedan'];
-    for (let i = 0; i < 10; i++) {
+    const types = ['sedan', 'sedan', 'taxi', 'van', 'sport', 'bus', 'taxi', 'truck', 'sedan', 'pickup', 'van', 'sedan', 'bus', 'taxi'];
+    let i = 0;
+    while (this.cars.length < 14) {
       const bx = randInt(rng, 0, 3), bz = randInt(rng, 0, 3);
-      if (bx === 1 && bz === 1) continue; // plaza has no road loop
+      if (bx === 1 && bz === 1) continue; // plaza has no road loop — retry another block
       const type = types[i % types.length];
       const color = pick(rng, VEHICLE_TYPES[type].colors);
       const loop = loopWaypoints(bx, bz, rng() < 0.5 ? 1 : -1);
@@ -54,19 +55,17 @@ export class Traffic {
       const v = new Vehicle(this.scene, type, color, start.x, start.z, 0, 'npc');
       v.loop = loop;
       v.wp = 0;
-      v.cruise = randRange(rng, 7, 11);
+      // cruise varies by type: bus slow, sport fast, the rest mid-range
+      v.cruise = type === 'bus' ? randRange(rng, 6, 8) : type === 'sport' ? randRange(rng, 10, 12) : randRange(rng, 7, 11);
       this.cars.push(v);
+      i++;
     }
   }
 
   _buildPeds() {
     const rng = this.rng;
-    for (let i = 0; i < 24; i++) {
-      const bx = randInt(rng, 0, 3), bz = randInt(rng, 0, 3);
-      const s = blockSpan(bx), t = blockSpan(bz);
-      // sidewalk rectangle just outside the block
-      const hx = (s.hi - s.lo) / 2 + 2, hz = (t.hi - t.lo) / 2 + 2;
-      const cx = (s.lo + s.hi) / 2, cz = (t.lo + t.hi) / 2;
+    // One pedestrian (or one pair member) at a fixed spot with shared walk params.
+    const spawnPed = (px, pz, cx, cz, hx, hz, heading, speed, clockwise, targetCorner, state, idleTimer) => {
       const built = createPlayerMesh();
       // recolour clothes
       built.group.traverse((m) => {
@@ -76,25 +75,77 @@ export class Traffic {
           if (m.material.color.getHex() === 0xc98e6a) m.material = new THREE.MeshStandardMaterial({ color: pick(rng, SKINS), roughness: 0.75 });
         }
       });
-      const scale = randRange(rng, 0.92, 1.06);
-      built.group.scale.setScalar(scale);
-      const px = cx + randRange(rng, -hx, hx);
-      const pz = cz + (rng() < 0.5 ? -hz : hz);
+      // independent width / height scale — bodies differ in build, not just size
+      const sx = randRange(rng, 0.9, 1.15), sy = randRange(rng, 0.9, 1.1);
+      built.group.scale.set(sx, sy, sx);
       built.group.position.set(px, 0, pz);
       this.scene.add(built.group);
       this.peds.push({
         mesh: built, parts: built,
         x: px, z: pz, cx, cz, hx, hz,
-        heading: randRange(rng, 0, Math.PI * 2),
-        speed: randRange(rng, 0.8, 1.6),
+        heading, speed,
         walkPhase: randRange(rng, 0, 6),
-        state: 'walk',
+        state,
         fleeTimer: 0,
         fleeFrom: null,
-        clockwise: rng() < 0.5,
+        clockwise,
+        targetCorner,
         down: false, downTimer: 0,
-        idleTimer: randRange(rng, 0, 8),
+        idleTimer,
       });
+    };
+    // nearest sidewalk corner to (px, pz) on the rectangle around (cx, cz)
+    const nearestCorner = (px, pz, cx, cz, hx, hz) => {
+      const corners = [
+        { x: cx - hx, z: cz - hz }, { x: cx + hx, z: cz - hz },
+        { x: cx + hx, z: cz + hz }, { x: cx - hx, z: cz + hz },
+      ];
+      let best = 0, bd = 1e9;
+      for (let i = 0; i < 4; i++) {
+        const d = Math.hypot(corners[i].x - px, corners[i].z - pz);
+        if (d < bd) { bd = d; best = i; }
+      }
+      return best;
+    };
+
+    // 36 walking pedestrians; ~30% spawn in pairs sharing heading, speed,
+    // direction and target corner, walking 1.2 m apart (side by side).
+    let spawned = 0;
+    while (spawned < 36) {
+      const pair = spawned + 1 < 36 && rng() < 0.3;
+      const bx = randInt(rng, 0, 3), bz = randInt(rng, 0, 3);
+      const s = blockSpan(bx), t = blockSpan(bz);
+      // sidewalk rectangle just outside the block
+      const hx = (s.hi - s.lo) / 2 + 2, hz = (t.hi - t.lo) / 2 + 2;
+      const cx = (s.lo + s.hi) / 2, cz = (t.lo + t.hi) / 2;
+      const px = cx + randRange(rng, -hx, hx);
+      const pz = cz + (rng() < 0.5 ? -hz : hz);
+      const heading = randRange(rng, 0, Math.PI * 2);
+      const speed = randRange(rng, 0.8, 1.6);
+      const clockwise = rng() < 0.5;
+      const targetCorner = nearestCorner(px, pz, cx, cz, hx, hz);
+      const idleTimer = randRange(rng, 0, 8);
+      spawnPed(px, pz, cx, cz, hx, hz, heading, speed, clockwise, targetCorner, 'walk', idleTimer);
+      spawned++;
+      if (pair) {
+        // partner 1.2 m to the side (perpendicular to the shared heading)
+        const ox = px + Math.sin(heading) * 1.2, oz = pz + Math.cos(heading) * 1.2;
+        spawnPed(ox, oz, cx, cz, hx, hz, heading, speed, clockwise, targetCorner, 'walk', idleTimer);
+        spawned++;
+      }
+    }
+
+    // 3 market vendors standing still around the market block centre (-72, 72),
+    // inside block bx=0, bz=3 (x -90..-42, z 42..90); long idle so they stay put.
+    const mkt = blockSpan(0), mktT = blockSpan(3);
+    const mcx = (mkt.lo + mkt.hi) / 2, mcz = (mktT.lo + mktT.hi) / 2;
+    const mhx = (mkt.hi - mkt.lo) / 2 + 2, mhz = (mktT.hi - mktT.lo) / 2 + 2;
+    for (let i = 0; i < 3; i++) {
+      const px = -72 + randRange(rng, -4, 4);
+      const pz = 72 + randRange(rng, -4, 4);
+      spawnPed(px, pz, mcx, mcz, mhx, mhz, randRange(rng, 0, Math.PI * 2),
+        randRange(rng, 0.8, 1.6), rng() < 0.5, nearestCorner(px, pz, mcx, mcz, mhx, mhz),
+        'idle', randRange(rng, 180, 300));
     }
   }
 

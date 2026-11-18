@@ -16,12 +16,17 @@ function groundTexture() {
     const sand = g.createLinearGradient(px(SEA_X - 26), 0, px(SEA_X), 0);
     sand.addColorStop(0, '#e8d5a4'); sand.addColorStop(1, '#dcc48e');
     g.fillStyle = sand; g.fillRect(0, 0, px(SEA_X), H);
-    // block interiors: slightly varied warm tones
-    const blockTones = ['#a89a86', '#b09d88', '#a3967f', '#b3a28c'];
-    let bi = 0;
+    // block interiors: ground colour per district (contract: marina sand, pasar warm
+    // brick, downtown grey, perumahan green; plaza/park overpainted below)
+    const districtGround = {
+      '0,0': '#e0cda0', '0,1': '#a89a86', '0,2': '#b09d88', '0,3': '#b98a5e',
+      '1,0': '#a3967f', '1,1': '#c9b391', '1,2': '#b3a28c', '1,3': '#b09d88',
+      '2,0': '#8f8f92', '2,1': '#a89a86', '2,2': '#b3a28c', '2,3': '#a3967f',
+      '3,0': '#7fae62', '3,1': '#a89a86', '3,2': '#b09d88', '3,3': '#8fae6a',
+    };
     for (let bx = 0; bx < 4; bx++) for (let bz = 0; bz < 4; bz++) {
       const s = blockSpan(bx), t = blockSpan(bz);
-      g.fillStyle = blockTones[bi++ % blockTones.length];
+      g.fillStyle = districtGround[`${bx},${bz}`] || '#a89a86';
       g.fillRect(px(s.lo), pz(t.lo), px(s.hi) - px(s.lo), pz(t.hi) - pz(t.lo));
     }
     // plaza block (1,1): patterned paving
@@ -132,7 +137,37 @@ const BUILDING_TYPES = [
   { kind: 'office', base: '#9db8c9', win: '#33505f', floors: 7, cols: 5, h: [20, 32] },
   { kind: 'hotel', base: '#c98a7a', win: '#3a4a58', floors: 9, cols: 7, h: [28, 38] },
   { kind: 'shop', base: '#e6d3a3', win: '#54483a', floors: 2, cols: 5, h: [7, 9] },
+  // --- new, clearly distinct types (v3 district pass) ---
+  { kind: 'house', base: '#e8d8b0', win: '#7a6a4a', floors: 2, cols: 4, h: [5, 8] },      // 1-2 floors, pitched roof, garden
+  { kind: 'tower', base: '#5a7a9a', win: '#1e3245', floors: 14, cols: 8, h: [48, 68] },    // 12+ floors, crown/spire
+  { kind: 'market', base: '#d9a05a', win: '#6a4a2e', floors: 1, cols: 6, h: [5, 7] },      // low, wide hall
+  { kind: 'marina', base: '#f5f5f0', win: '#3a6a8a', floors: 3, cols: 5, h: [9, 13] },     // white/blue, balconies
+  { kind: 'theater', base: '#7a3a4a', win: '#e8c860', floors: 3, cols: 6, h: [10, 14] },  // wide, marquee
+  { kind: 'warehouse', base: '#8a8a7a', win: '#4a4a42', floors: 2, cols: 8, h: [7, 10] }, // big footprint, flat
 ];
+
+// District contract (coordinates/names are relied on by other agents — do not change).
+// pool = building kinds allowed in the block; ground matches groundTexture().
+const DISTRICTS = {
+  '0,0': { name: 'MARINA', sub: 'Pantai Barat', pool: ['marina', 'house', 'shop'] },
+  '0,1': { name: 'PELABUHAN', sub: 'Dermaga Lama', pool: ['warehouse', 'shop', 'res'] },
+  '0,2': { name: 'KOTA LAMA', sub: 'Gang Tua', pool: ['res', 'shop', 'house'] },
+  '0,3': { name: 'PASAR SOL', sub: 'Pasar Pagi', pool: ['market', 'shop', 'warehouse'] },
+  '1,0': { name: 'BULEVAR SOL', sub: 'Jalan Raya', pool: ['office', 'shop', 'hotel', 'theater'] },
+  '1,1': { name: 'PLAZA MAR', sub: 'Menara Jam', pool: ['shop', 'res'] },
+  '1,2': { name: 'DISTRIK SENI', sub: 'Galeri & Kafe', pool: ['theater', 'shop', 'res'] },
+  '1,3': { name: 'PERDAGANGAN', sub: 'Ruko Raya', pool: ['shop', 'office', 'warehouse'] },
+  '2,0': { name: 'DOWNTOWN', sub: 'Menara Kaca', pool: ['tower', 'office', 'hotel'] },
+  '2,1': { name: 'BISNIS', sub: 'Kantor Pusat', pool: ['office', 'hotel', 'tower'] },
+  '2,2': { name: 'DISTRIK KACA', sub: 'Gedung Kaca', pool: ['office', 'res', 'hotel'] },
+  '2,3': { name: 'KOTA TIMUR', sub: 'Blok Timur', pool: ['res', 'shop', 'office'] },
+  '3,0': { name: 'TAMAN SOL', sub: 'Taman & Air Mancur', pool: ['res'] },
+  '3,1': { name: 'TAMAN KOTA', sub: 'Tepi Taman', pool: ['res', 'house', 'shop'] },
+  '3,2': { name: 'KOTA TIMUR', sub: 'Blok Timur', pool: ['res', 'house', 'shop'] },
+  '3,3': { name: 'PERUMAHAN', sub: 'Kampung Halaman', pool: ['house', 'res'] },
+};
+
+function districtKey(bx, bz) { return `${bx},${bz}`; }
 
 const SHOP_SIGNS = [
   ['CAFÉ LUMA', '#7a4a2e', '#ffe9c4', 'coffee · pastries'],
@@ -156,25 +191,40 @@ export function createWorld(scene, seed) {
   const group = new THREE.Group();
   scene.add(group);
 
-  // ---- sky dome (warm sunset gradient) + sun disc + clouds ----
-  const skyTex = canvasTexture(1024, 512, (g, W, H) => {
-    const grad = g.createLinearGradient(0, 0, 0, H);
-    grad.addColorStop(0, '#5a6fc0');
-    grad.addColorStop(0.38, '#9a7ec4');
-    grad.addColorStop(0.6, '#e8937a');
-    grad.addColorStop(0.78, '#ffb37a');
-    grad.addColorStop(0.92, '#ff8f5e');
-    grad.addColorStop(1, '#f2703f');
-    g.fillStyle = grad; g.fillRect(0, 0, W, H);
-    g.fillStyle = 'rgba(255,255,255,0.75)';
-    for (let i = 0; i < 14; i++) {
-      const cx = rng() * W, cy = 40 + rng() * 160, w = 60 + rng() * 140;
-      g.beginPath(); g.ellipse(cx, cy, w, w * 0.22, 0, 0, Math.PI * 2); g.fill();
-    }
-  });
+  const signMats = []; // {mat, mult} — every sign/billboard/neon emissive material, for setTimeOfDay
+  let lampRoomMat = null;
+  let beamMat = null;
+
+  // ---- sky dome: 4 time-of-day textures, 'golden' is the v2 default ----
+  function makeSkyTexture(stops, clouds, stars) {
+    return canvasTexture(1024, 512, (g, W, H) => {
+      const grad = g.createLinearGradient(0, 0, 0, H);
+      for (const [o, c] of stops) grad.addColorStop(o, c);
+      g.fillStyle = grad; g.fillRect(0, 0, W, H);
+      if (stars) {
+        g.fillStyle = 'rgba(255,255,255,0.9)';
+        for (let i = 0; i < 90; i++) {
+          g.beginPath(); g.arc(rng() * W, rng() * H * 0.55, 0.8 + rng() * 1.4, 0, Math.PI * 2); g.fill();
+        }
+      }
+      if (clouds) {
+        g.fillStyle = clouds;
+        for (let i = 0; i < 14; i++) {
+          const cx = rng() * W, cy = 40 + rng() * 160, w = 60 + rng() * 140;
+          g.beginPath(); g.ellipse(cx, cy, w, w * 0.22, 0, 0, Math.PI * 2); g.fill();
+        }
+      }
+    });
+  }
+  const skyTextures = {
+    golden: makeSkyTexture([[0, '#5a6fc0'], [0.38, '#9a7ec4'], [0.6, '#e8937a'], [0.78, '#ffb37a'], [0.92, '#ff8f5e'], [1, '#f2703f']], 'rgba(255,255,255,0.75)', false),
+    day: makeSkyTexture([[0, '#2f6fd0'], [0.45, '#6fb0e8'], [0.75, '#a8d4f0'], [1, '#d8ecf8']], 'rgba(255,255,255,0.9)', false),
+    dusk: makeSkyTexture([[0, '#2a2350'], [0.35, '#6a3a78'], [0.6, '#c65a6a'], [0.8, '#ff8a5e'], [1, '#e86a3f']], 'rgba(255,200,180,0.5)', false),
+    night: makeSkyTexture([[0, '#04060f'], [0.5, '#0a1428'], [0.8, '#12233d'], [1, '#1a2f4d']], 'rgba(200,210,230,0.12)', true),
+  };
   const sky = new THREE.Mesh(
     new THREE.SphereGeometry(600, 24, 16),
-    new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide, fog: false }),
+    new THREE.MeshBasicMaterial({ map: skyTextures.golden, side: THREE.BackSide, fog: false }),
   );
   group.add(sky);
   const sun = new THREE.Mesh(
@@ -185,7 +235,7 @@ export function createWorld(scene, seed) {
   group.add(sun);
   scene.fog = new THREE.Fog(0xef9e63, 180, 520);
 
-  // ---- lighting ----
+  // ---- lighting (golden values = v2 defaults; setTimeOfDay rewrites them) ----
   const hemi = new THREE.HemisphereLight(0xbfd9ee, 0x8a6f52, 0.75);
   scene.add(hemi);
   const sunLight = new THREE.DirectionalLight(0xffe3b3, 2.4);
@@ -197,7 +247,42 @@ export function createWorld(scene, seed) {
   sunLight.shadow.camera.far = 500;
   sunLight.shadow.bias = -0.0004;
   scene.add(sunLight);
-  scene.add(new THREE.AmbientLight(0xffe8cc, 0.25));
+  const ambient = new THREE.AmbientLight(0xffe8cc, 0.25);
+  scene.add(ambient);
+
+  // Time-of-day presets. 'golden' reproduces the v2 look exactly.
+  const TIME_PRESETS = {
+    golden: { fog: [0xef9e63, 180, 520], sun: [0xffe3b3, 2.4, [-170, 110, 70]], hemi: [0xbfd9ee, 0x8a6f52, 0.75], ambient: [0xffe8cc, 0.25], disc: [0xfff2c0, [-420, 55, -60]], lamp: 1.6, sign: 0.25, beam: 0.22 },
+    day: { fog: [0xa8c8e8, 200, 600], sun: [0xfff5e0, 2.8, [80, 180, 60]], hemi: [0xcfe8ff, 0x9a8a6a, 0.9], ambient: [0xffffff, 0.35], disc: [0xfff8d0, [200, 220, 40]], lamp: 0.2, sign: 0.1, beam: 0.12 },
+    dusk: { fog: [0x8a5a7a, 150, 450], sun: [0xff9a5a, 2.0, [-220, 40, 40]], hemi: [0x8a7ab8, 0x5a4a3a, 0.7], ambient: [0xffd0b0, 0.28], disc: [0xff8a4a, [-430, 28, -40]], lamp: 2.2, sign: 0.6, beam: 0.3 },
+    night: { fog: [0x0a1428, 120, 380], sun: [0x9ab8e8, 0.8, [60, 180, -40]], hemi: [0x2a3a5a, 0x1a1a22, 0.5], ambient: [0x334466, 0.22], disc: [0xe8eef8, [140, 230, 90]], lamp: 3.0, sign: 1.0, beam: 0.38 },
+  };
+  function setTimeOfDay(preset) {
+    const p = TIME_PRESETS[preset];
+    if (!p) return;
+    sky.material.map = skyTextures[preset];
+    sky.material.needsUpdate = true;
+    scene.fog.color.setHex(p.fog[0]); scene.fog.near = p.fog[1]; scene.fog.far = p.fog[2];
+    sunLight.color.setHex(p.sun[0]); sunLight.intensity = p.sun[1];
+    sunLight.position.set(p.sun[2][0], p.sun[2][1], p.sun[2][2]);
+    hemi.color.setHex(p.hemi[0]); hemi.groundColor.setHex(p.hemi[1]); hemi.intensity = p.hemi[2];
+    ambient.color.setHex(p.ambient[0]); ambient.intensity = p.ambient[1];
+    sun.material.color.setHex(p.disc[0]);
+    sun.position.set(p.disc[1][0], p.disc[1][1], p.disc[1][2]);
+    sun.lookAt(0, 40, 0);
+    lampGlowMat.emissiveIntensity = p.lamp;
+    if (lampRoomMat) lampRoomMat.emissiveIntensity = p.lamp * 1.4;
+    if (beamMat) beamMat.opacity = p.beam;
+    for (const s of signMats) s.mat.emissiveIntensity = p.sign * s.mult;
+  }
+
+  function districtAt(x, z) {
+    if (x < SEA_X) return { name: 'LAUT', sub: 'Teluk Solmara' };
+    const bx = x < -48 ? 0 : x < 0 ? 1 : x < 48 ? 2 : 3;
+    const bz = z < -48 ? 0 : z < 0 ? 1 : z < 48 ? 2 : 3;
+    const d = DISTRICTS[districtKey(bx, bz)];
+    return d ? { name: d.name, sub: d.sub } : { name: 'SOLMARA', sub: 'Kota' };
+  }
 
   // ---- ground ----
   const ground = new THREE.Mesh(
@@ -313,15 +398,26 @@ export function createWorld(scene, seed) {
   // ---- buildings ----
   const plazaBlock = { bx: 1, bz: 1 };
   const parkBlock = { bx: 3, bz: 0 };
+  let neonCount = 0; // downtown vertical neon signs (max 2)
   for (let bx = 0; bx < 4; bx++) for (let bz = 0; bz < 4; bz++) {
     if (bx === plazaBlock.bx && bz === plazaBlock.bz) continue;
     if (bx === parkBlock.bx && bz === parkBlock.bz) continue;
     const s = blockSpan(bx), t = blockSpan(bz);
+    const district = DISTRICTS[districtKey(bx, bz)] || { pool: ['res', 'office', 'shop', 'hotel'] };
+    const poolIdx = BUILDING_TYPES.map((t, i) => (district.pool.includes(t.kind) ? i : -1)).filter((i) => i >= 0);
     const n = randInt(rng, 2, 4);
+    let prevTypeIdx = -1;
     for (let i = 0; i < n; i++) {
-      const typeIdx = Math.floor(rng() * BUILDING_TYPES.length);
+      // pool per district; never two adjacent buildings with the same type
+      let typeIdx = poolIdx[Math.floor(rng() * poolIdx.length)];
+      for (let tries = 0; tries < 6 && typeIdx === prevTypeIdx && poolIdx.length > 1; tries++) {
+        typeIdx = poolIdx[Math.floor(rng() * poolIdx.length)];
+      }
+      prevTypeIdx = typeIdx;
       const type = BUILDING_TYPES[typeIdx];
-      const w = randRange(rng, 9, 14), d = randRange(rng, 9, 14);
+      const wide = type.kind === 'warehouse' || type.kind === 'theater' || type.kind === 'market';
+      const w = wide ? randRange(rng, 14, 20) : type.kind === 'house' ? randRange(rng, 8, 11) : randRange(rng, 9, 14);
+      const d = wide ? randRange(rng, 14, 20) : type.kind === 'house' ? randRange(rng, 8, 11) : randRange(rng, 9, 14);
       const h = randRange(rng, type.h[0], type.h[1]);
       const cx = randRange(rng, s.lo + w / 2 + 1, s.hi - w / 2 - 1);
       const cz = randRange(rng, t.lo + d / 2 + 1, t.hi - d / 2 - 1);
@@ -336,9 +432,11 @@ export function createWorld(scene, seed) {
       tex.repeat.set(Math.max(1, Math.round(w / 7)), Math.max(1, Math.round(h / 7)));
       // tiered massing: distinct silhouette per kind, setbacks + cornice bands
       const tierDefs =
-        type.kind === 'office' ? [{ wf: 1, hf: 0.55 }, { wf: 0.78, hf: 0.3 }, { wf: 0.55, hf: 0.15 }]
+        type.kind === 'tower' ? [{ wf: 1, hf: 0.5 }, { wf: 0.75, hf: 0.3 }, { wf: 0.5, hf: 0.2 }]
+        : type.kind === 'office' ? [{ wf: 1, hf: 0.55 }, { wf: 0.78, hf: 0.3 }, { wf: 0.55, hf: 0.15 }]
         : type.kind === 'hotel' ? [{ wf: 1, hf: 0.35 }, { wf: 0.72, hf: 0.65 }]
-        : type.kind === 'shop' ? [{ wf: 1, hf: 1 }]
+        : type.kind === 'marina' ? [{ wf: 1, hf: 0.6 }, { wf: 0.8, hf: 0.4 }]
+        : type.kind === 'shop' || type.kind === 'market' || type.kind === 'warehouse' || type.kind === 'theater' || type.kind === 'house' ? [{ wf: 1, hf: 1 }]
         : [{ wf: 1, hf: 0.6 }, { wf: 0.75, hf: 0.4 }];
       let y = 0;
       let topW = w, topD = d;
@@ -355,8 +453,12 @@ export function createWorld(scene, seed) {
       // roof: flat + parapet, pitched prism, rooftop garden, or office crown
       const roofRoll = rng();
       const roofStyle =
-        type.kind === 'shop' ? (roofRoll < 0.6 ? 'pitched' : 'flat')
+        type.kind === 'house' ? 'pitched'
+        : type.kind === 'tower' ? (roofRoll < 0.6 ? 'crown' : 'spire')
+        : type.kind === 'market' || type.kind === 'warehouse' || type.kind === 'theater' ? 'flat'
+        : type.kind === 'shop' ? (roofRoll < 0.6 ? 'pitched' : 'flat')
         : type.kind === 'office' ? (roofRoll < 0.7 ? 'flat' : 'crown')
+        : type.kind === 'marina' ? (roofRoll < 0.5 ? 'pitched' : 'flat')
         : (roofRoll < 0.5 ? 'flat' : roofRoll < 0.75 ? 'pitched' : 'garden');
       if (roofStyle === 'pitched') {
         const roofH = randRange(rng, 1.8, 3);
@@ -388,10 +490,16 @@ export function createWorld(scene, seed) {
         } else if (roofStyle === 'crown') {
           addBox(mat, topW * 0.5, 1.6, topD * 0.5, cx, h + 0.8, cz);
           addBox(roofMat2, topW * 0.5 + 0.4, 0.35, topD * 0.5 + 0.4, cx, h + 1.7, cz);
+        } else if (roofStyle === 'spire') {
+          // tower spire: thin cylinder + ball tip
+          const spire = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.9, 7, 8), roofMat2);
+          spire.position.set(cx, h + 3.5, cz); spire.castShadow = true; group.add(spire);
+          const tip = new THREE.Mesh(new THREE.SphereGeometry(0.9, 8, 6), glassMat);
+          tip.position.set(cx, h + 7.4, cz); group.add(tip);
         }
       }
-      // rooftop props (flat roofs only, so nothing pokes through a prism)
-      if (roofStyle !== 'pitched' && rng() < 0.7) {
+      // rooftop props (flat roofs only, so nothing pokes through a prism or spire)
+      if (roofStyle !== 'pitched' && roofStyle !== 'spire' && rng() < 0.7) {
         const ax = cx + randRange(rng, -w / 4, w / 4), az = cz + randRange(rng, -d / 4, d / 4);
         addBox(acMat, 1.6, 0.9, 1.2, ax, h + 0.9, az);
         const vent = new THREE.Mesh(ventGeo, acMat);
@@ -401,8 +509,8 @@ export function createWorld(scene, seed) {
         const tank = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, 2.2, 10), acMat);
         tank.position.set(cx - w / 4, h + 1.4, cz - d / 4); tank.castShadow = true; group.add(tank);
       }
-      // balcony on the base tier front (res / hotel)
-      if ((type.kind === 'res' || type.kind === 'hotel') && rng() < 0.5) {
+      // balcony on the base tier front (res / hotel / marina)
+      if ((type.kind === 'res' || type.kind === 'hotel' || type.kind === 'marina') && rng() < 0.5) {
         const bw = w * tierDefs[0].wf, bd = d * tierDefs[0].wf;
         const by = h * tierDefs[0].hf - 1.6;
         const bxOff = randRange(rng, -bw / 4, bw / 4);
@@ -412,12 +520,12 @@ export function createWorld(scene, seed) {
         addBox(frameMat, 0.07, 0.5, 1.0, cx + bxOff + 1.16, by + 0.35, cz + bd / 2 + 0.5);
       }
       // ground-floor storefront: glass + door frame + mullions + tilted awning
-      if (type.kind === 'shop' || rng() < 0.3) {
+      if (type.kind === 'shop' || type.kind === 'market' || type.kind === 'theater' || rng() < 0.3) {
         const sign = pick(rng, SHOP_SIGNS);
-        const sm = new THREE.Mesh(
-          new THREE.PlaneGeometry(7, 1.75),
-          new THREE.MeshStandardMaterial({ map: signTexture(sign[0], sign[1], sign[2], sign[3]), emissive: 0xffffff, emissiveMap: signTexture(sign[0], sign[1], sign[2], sign[3]), emissiveIntensity: 0.25, roughness: 0.6 }),
-        );
+        const signTex = signTexture(sign[0], sign[1], sign[2], sign[3]);
+        const signMat = new THREE.MeshStandardMaterial({ map: signTex, emissive: 0xffffff, emissiveMap: signTex, emissiveIntensity: 0.25, roughness: 0.6 });
+        signMats.push({ mat: signMat, mult: 1 });
+        const sm = new THREE.Mesh(new THREE.PlaneGeometry(7, 1.75), signMat);
         sm.position.set(cx, 4.5, cz + d / 2 + 0.06);
         group.add(sm);
         addBox(glassMat, w * 0.62, 2.4, 0.14, cx - w * 0.12, 1.5, cz + d / 2 + 0.08);
@@ -432,6 +540,40 @@ export function createWorld(scene, seed) {
         awn.position.set(cx, 3.15, cz + d / 2 + 0.75);
         awn.rotation.x = 0.5;
         awn.castShadow = true; awn.receiveShadow = true; group.add(awn);
+      }
+      // downtown neon: vertical glowing sign on towers (2 max, tracked for setTimeOfDay)
+      if (bx === 2 && bz === 0 && (type.kind === 'tower' || type.kind === 'office') && neonCount < 2) {
+        neonCount++;
+        const neonTex = signTexture(neonCount === 1 ? 'SOL' : 'NEON', neonCount === 1 ? '#ff2e7e' : '#00d8ff', '#ffffff');
+        const neonMat = new THREE.MeshStandardMaterial({ map: neonTex, emissive: 0xffffff, emissiveMap: neonTex, emissiveIntensity: 1.0, roughness: 0.4 });
+        signMats.push({ mat: neonMat, mult: 4 }); // 4x brighter than a shop sign
+        const neon = new THREE.Mesh(new THREE.PlaneGeometry(2.2, h * 0.55), neonMat);
+        neon.position.set(cx, h * 0.55, cz + d / 2 + 0.08);
+        group.add(neon);
+      }
+      // theater marquee: protruding canopy + glowing title strip
+      if (type.kind === 'theater') {
+        addBox(frameMat, w * 0.7, 0.3, 2.2, cx, 3.4, cz + d / 2 + 1.0);
+        const mqTex = signTexture('TEATER SOL', '#2a1a3a', '#ff5fa2', 'malam ini');
+        const mqMat = new THREE.MeshStandardMaterial({ map: mqTex, emissive: 0xffffff, emissiveMap: mqTex, emissiveIntensity: 0.25, roughness: 0.6 });
+        signMats.push({ mat: mqMat, mult: 1.5 });
+        const mq = new THREE.Mesh(new THREE.PlaneGeometry(6, 1.4), mqMat);
+        mq.position.set(cx, 4.4, cz + d / 2 + 0.08);
+        group.add(mq);
+      }
+      // house garden: ball shrubs + low fence (perumahan identity)
+      if (type.kind === 'house') {
+        for (let k = 0; k < 2; k++) {
+          const shrub = new THREE.Mesh(crownGeo, pick(rng, leafMats));
+          shrub.scale.setScalar(randRange(rng, 0.5, 0.8));
+          shrub.position.set(cx + (k === 0 ? -w / 2 - 0.8 : w / 2 + 0.8), 0.5, cz + d / 2 - 1);
+          shrub.castShadow = true; group.add(shrub);
+        }
+        if (rng() < 0.6) {
+          addBox(frameMat, w + 2.4, 0.8, 0.12, cx, 0.4, cz + d / 2 + 1.6);
+          addBox(frameMat, 0.12, 0.8, d / 2 + 1, cx - w / 2 - 1.2, 0.4, cz + d / 4);
+          addBox(frameMat, 0.12, 0.8, d / 2 + 1, cx + w / 2 + 1.2, 0.4, cz + d / 4);
+        }
       }
       addCollider(cx, cz, w / 2, d / 2);
     }
@@ -482,15 +624,16 @@ export function createWorld(scene, seed) {
   tower.position.set(lx, 13, lz); tower.castShadow = true; group.add(tower);
   const gallery = new THREE.Mesh(new THREE.CylinderGeometry(3.4, 3.4, 0.8, 16), poleMat);
   gallery.position.set(lx, 26.4, lz); group.add(gallery);
+  lampRoomMat = new THREE.MeshStandardMaterial({ color: 0xffe9a8, emissive: 0xffd76a, emissiveIntensity: 2.2, transparent: true, opacity: 0.9 });
   const lampRoom = new THREE.Mesh(
     new THREE.CylinderGeometry(2.2, 2.2, 3, 12),
-    new THREE.MeshStandardMaterial({ color: 0xffe9a8, emissive: 0xffd76a, emissiveIntensity: 2.2, transparent: true, opacity: 0.9 }),
+    lampRoomMat,
   );
   lampRoom.position.set(lx, 28.4, lz); group.add(lampRoom);
   const cap = new THREE.Mesh(new THREE.ConeGeometry(2.8, 2.4, 12), new THREE.MeshStandardMaterial({ color: 0x2e3438, roughness: 0.6 }));
   cap.position.set(lx, 31, lz); group.add(cap);
   // rotating beam (additive cone)
-  const beamMat = new THREE.MeshBasicMaterial({ color: 0xfff2b0, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+  beamMat = new THREE.MeshBasicMaterial({ color: 0xfff2b0, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
   const beam = new THREE.Mesh(new THREE.ConeGeometry(4.5, 34, 12, 1, true), beamMat);
   beam.position.set(lx, 28.4, lz);
   beam.rotation.z = Math.PI / 2;
@@ -500,6 +643,87 @@ export function createWorld(scene, seed) {
   // beach palms near the lighthouse
   for (let i = 0; i < 5; i++) {
     addPalm(SEA_X - 4 - rng() * 8, -84 + i * 12 + rng() * 4, 1);
+  }
+
+  // ---- MARINA props: 3 boats at sea + wooden pier + extra beach palms ----
+  const woodMat = new THREE.MeshStandardMaterial({ color: 0x8a6a44, roughness: 0.9 });
+  const sailMat = new THREE.MeshStandardMaterial({ color: 0xf5efdd, roughness: 0.85, side: THREE.DoubleSide });
+  const boatSpots = [[-120, -78], [-128, -66], [-124, -60]];
+  for (let bi2 = 0; bi2 < boatSpots.length; bi2++) {
+    const [bx2, bz2] = boatSpots[bi2];
+    const boat = new THREE.Group();
+    boat.position.set(bx2 + randRange(rng, -1.5, 1.5), 0, bz2 + randRange(rng, -1.5, 1.5));
+    boat.rotation.y = randRange(rng, -0.5, 0.5);
+    const hull = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), woodMat);
+    hull.scale.set(3.4, 0.9, 1.5); hull.position.y = 0.25; boat.add(hull);
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 5.2, 8), poleMat);
+    mast.position.y = 3.1; boat.add(mast);
+    const sailShape = new THREE.Shape();
+    sailShape.moveTo(0, 0); sailShape.lineTo(0, 4.2); sailShape.lineTo(2.4, 0.4); sailShape.closePath();
+    const sail = new THREE.Mesh(new THREE.ShapeGeometry(sailShape), sailMat);
+    sail.position.set(0.1, 0.9, 0); boat.add(sail);
+    const stern = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1.2, 6), woodMat);
+    stern.rotation.z = -Math.PI / 2; stern.position.set(-3.2, 0.5, 0); boat.add(stern);
+    group.add(boat);
+  }
+  // pier planks from the beach (x -102..-112, z -72), cylinder posts — no collider (over water)
+  for (let px2 = -102; px2 >= -112; px2 -= 1.6) {
+    addBox(woodMat, 1.5, 0.12, 2.6, px2, 0.35, -72);
+  }
+  for (let px2 = -103; px2 >= -111; px2 -= 4) {
+    for (const pz2 of [-73.1, -70.9]) {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 1.7, 8), woodMat);
+      post.position.set(px2, 0.45, pz2); post.castShadow = true; group.add(post);
+    }
+  }
+  // extra palms along the marina beach (x ~-100, z -84..60)
+  for (const pz2 of [-40, -10, 20, 50]) {
+    addPalm(-100 + randRange(rng, -1.5, 1.5), pz2 + randRange(rng, -2, 2), randRange(rng, 0.9, 1.1));
+  }
+
+  // ---- PASAR SOL props: 6 market stalls + crates ----
+  const fruitMats = [0xe86a3f, 0xe8c33c, 0x7a3a8a].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.8 }));
+  const stallBase = [[-84, 62], [-72, 62], [-60, 62], [-84, 78], [-72, 78], [-60, 78]];
+  for (let si = 0; si < stallBase.length; si++) {
+    let kx = stallBase[si][0], kz = stallBase[si][1];
+    let clash = true;
+    for (let att = 0; att < 6 && clash; att++) {
+      kx = stallBase[si][0] + randRange(rng, -3, 3);
+      kz = stallBase[si][1] + randRange(rng, -3, 3);
+      clash = false;
+      for (const c of colliders) {
+        if (Math.abs(c.x - kx) < c.hx + 2.2 && Math.abs(c.z - kz) < c.hz + 2.2) { clash = true; break; }
+      }
+    }
+    if (clash) continue;
+    const tableTop = new THREE.Mesh(new THREE.CylinderGeometry(1.7, 1.7, 0.18, 12), woodMat);
+    tableTop.position.set(kx, 0.95, kz); tableTop.castShadow = true; group.add(tableTop);
+    const tableLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.24, 0.95, 8), poleMat);
+    tableLeg.position.set(kx, 0.48, kz); group.add(tableLeg);
+    for (const [ox, oz] of [[-1.5, -1.5], [1.5, -1.5], [-1.5, 1.5], [1.5, 1.5]]) {
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 2.2, 6), poleMat);
+      pole.position.set(kx + ox, 2.1, kz + oz); group.add(pole);
+    }
+    // tilted pyramid canopy (4-sided cone, not a box)
+    const canopy = new THREE.Mesh(new THREE.ConeGeometry(2.4, 1.0, 4), pick(rng, awningMats));
+    canopy.position.set(kx, 3.4, kz); canopy.rotation.y = Math.PI / 4 + randRange(rng, -0.15, 0.15);
+    canopy.castShadow = true; group.add(canopy);
+    // goods on the table: fruit spheres + small jars (cylinders)
+    for (let gi = 0; gi < 3; gi++) {
+      const fruit = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 6), pick(rng, fruitMats));
+      fruit.position.set(kx + randRange(rng, -0.9, 0.9), 1.16, kz + randRange(rng, -0.9, 0.9));
+      fruit.castShadow = true; group.add(fruit);
+    }
+    for (let gi = 0; gi < 2; gi++) {
+      const jar = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.32, 8), pick(rng, fruitMats));
+      jar.position.set(kx + randRange(rng, -0.9, 0.9), 1.2, kz + randRange(rng, -0.9, 0.9));
+      group.add(jar);
+    }
+    addCollider(kx, kz, 2, 2);
+  }
+  // small crates near the stalls
+  for (const [cx2, cz2] of [[-78, 70], [-66, 70], [-78, 84], [-66, 84]]) {
+    addBox(woodMat, 0.9, 0.9, 0.9, cx2 + randRange(rng, -1, 1), 0.45, cz2 + randRange(rng, -1, 1), randRange(rng, 0, 0.6));
   }
 
   // ---- park block: trees, benches, fountain ----
@@ -575,10 +799,10 @@ export function createWorld(scene, seed) {
     { x: 102.5, z: 48, ry: -Math.PI / 2, text: 'FISH MARKET', bg: '#2e6b6b', fg: '#dff5ef', sub: 'fresh catch daily' },
   ];
   for (const b of billboards) {
-    const board = new THREE.Mesh(
-      new THREE.PlaneGeometry(12, 4.5),
-      new THREE.MeshStandardMaterial({ map: signTexture(b.text, b.bg, b.fg, b.sub), emissive: 0xffffff, emissiveMap: signTexture(b.text, b.bg, b.fg, b.sub), emissiveIntensity: 0.3, roughness: 0.6, side: THREE.DoubleSide }),
-    );
+    const boardTex = signTexture(b.text, b.bg, b.fg, b.sub);
+    const boardMat = new THREE.MeshStandardMaterial({ map: boardTex, emissive: 0xffffff, emissiveMap: boardTex, emissiveIntensity: 0.3, roughness: 0.6, side: THREE.DoubleSide });
+    signMats.push({ mat: boardMat, mult: 1.2 }); // golden: 0.25 * 1.2 = 0.3 (v2 value)
+    const board = new THREE.Mesh(new THREE.PlaneGeometry(12, 4.5), boardMat);
     board.position.set(b.x, 7.5, b.z); board.rotation.y = b.ry; group.add(board);
     const pax = Math.cos(b.ry), paz = -Math.sin(b.ry); // board width axis in world
     for (const s of [-4, 4]) {
@@ -649,6 +873,8 @@ export function createWorld(scene, seed) {
     lampPositions,
     plaza: { x: pcx, z: pcz },
     lighthouse: { x: lx, z: lz },
+    setTimeOfDay,
+    districtAt,
     update(dt) {
       beamAngle += dt * 0.9;
       beam.rotation.y = beamAngle;

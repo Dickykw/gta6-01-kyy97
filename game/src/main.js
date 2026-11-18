@@ -7,7 +7,7 @@ import { Player } from './player.js';
 import { Vehicle, VEHICLE_TYPES, DustPool } from './vehicle.js';
 import { Traffic } from './traffic.js';
 import { Police } from './police.js';
-import { Missions } from './missions.js';
+import { Missions, MISSION_DEFS } from './missions.js';
 import { Combat } from './combat.js';
 import { HUD } from './hud.js';
 import { AudioEngine } from './audio.js';
@@ -198,7 +198,7 @@ class Game {
   acceptMission() { this.audio.click(); this.missions.accept(); this.hud.hideOverlay(); }
   nextMission() {
     this.hud.hideOverlay();
-    if (this.missions.index < 4) this.missions.start(this.missions.index);
+    if (this.missions.index < MISSION_DEFS.length) this.missions.start(this.missions.index);
     else this.missions.startFreeRoam();
   }
   retryMission() { this.hud.hideOverlay(); this.missions.start(this.missions.index); }

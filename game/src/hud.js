@@ -14,6 +14,7 @@ export class HUD {
     root.innerHTML = `
     <div id="hud-top-left">
       <div id="district">SOLMARA BAY</div>
+      <div id="district-sub" style="font-family:'Arial Black',Arial,sans-serif;font-size:11px;letter-spacing:2px;color:rgba(255,255,255,0.85);text-shadow:0 2px 6px rgba(0,0,0,.7);margin-top:2px;display:none"></div>
       <div id="mission-box">
         <div id="mission-title">SOLMARA HEAT</div>
         <div id="mission-text">Tekan ENTER untuk misi pertama</div>
@@ -57,6 +58,8 @@ export class HUD {
     </div>`;
     document.body.appendChild(root);
     this.el = {
+      district: root.querySelector('#district'),
+      districtSub: root.querySelector('#district-sub'),
       money: root.querySelector('#money'),
       wanted: root.querySelector('#wanted'),
       insight: root.querySelector('#insight'),
@@ -101,6 +104,8 @@ export class HUD {
     this._dialogTimer = null;
     this._lastWanted = -1;
     this._lastAmmo = null;
+    this._lastDistrict = null;
+    this._lastDistrictSub = null;
   }
 
   toast(msg, ms = 2600) {
@@ -368,6 +373,25 @@ export class HUD {
   /** Per-frame HUD refresh. */
   update(dt, state) {
     const g = this.game;
+    // district label (top-left): live name + sub from world.districtAt at
+    // the player's position; falls back to the static SOLMARA BAY header
+    // when the world agent's districtAt is not present.
+    if (g.world && typeof g.world.districtAt === 'function') {
+      const d = g.world.districtAt(g.player.x, g.player.z);
+      if (d && d.name) {
+        const name = String(d.name).toUpperCase();
+        if (name !== this._lastDistrict) {
+          this._lastDistrict = name;
+          this.el.district.textContent = name;
+        }
+        const sub = d.sub ? String(d.sub) : '';
+        if (sub !== this._lastDistrictSub) {
+          this._lastDistrictSub = sub;
+          this.el.districtSub.textContent = sub;
+          this.el.districtSub.style.display = sub ? 'block' : 'none';
+        }
+      }
+    }
     this.el.money.textContent = '$' + g.money.toLocaleString('en-US');
     if (state.wanted !== this._lastWanted) {
       this._lastWanted = state.wanted;

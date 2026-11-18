@@ -5,11 +5,14 @@ import * as THREE from 'three';
 import { clamp, angleDiff, softDotTexture, canvasTexture } from './util.js';
 
 export const VEHICLE_TYPES = {
-  sedan: { name: 'Kestrel S', maxSpeed: 27, accel: 15, turn: 1.9, length: 4.4, width: 1.9, colors: [0x2e5f8a, 0x8a2e2e, 0x3a3f45, 0xc8c2b4, 0x4a6b4f] },
+  sedan: { name: 'Kestrel S', maxSpeed: 27, accel: 15, turn: 1.9, length: 4.4, width: 1.9, colors: [0x2e5f8a, 0x8a2e2e, 0x3a3f45, 0xc8c2b4, 0x4a6b4f, 0x6b4a8a, 0xd98a4b] },
   taxi: { name: 'SolCab', maxSpeed: 26, accel: 14, turn: 1.9, length: 4.4, width: 1.9, colors: [0xe8a800] },
-  truck: { name: 'Hauler Bison', maxSpeed: 20, accel: 10, turn: 1.4, length: 6.4, width: 2.3, colors: [0x7a4a2e, 0x4a5a68, 0x5e6b3a] },
-  sport: { name: 'Vantara GT', maxSpeed: 35, accel: 19, turn: 2.2, length: 4.2, width: 2.0, colors: [0xc23b2e, 0x2e5f8a, 0xf2d7ff, 0x1c1c22] },
+  truck: { name: 'Hauler Bison', maxSpeed: 20, accel: 10, turn: 1.4, length: 6.4, width: 2.3, colors: [0x7a4a2e, 0x4a5a68, 0x5e6b3a, 0xc8c2b4] },
+  sport: { name: 'Vantara GT', maxSpeed: 35, accel: 19, turn: 2.2, length: 4.2, width: 2.0, colors: [0xc23b2e, 0x2e5f8a, 0xf2d7ff, 0x1c1c22, 0x2e8a6b] },
   police: { name: 'Solmara PD', maxSpeed: 33, accel: 17, turn: 2.1, length: 4.5, width: 1.9, colors: [0xe8e8e8] },
+  van: { name: 'SolVan', maxSpeed: 24, accel: 12, turn: 1.7, length: 5.2, width: 2.1, colors: [0xe8e8e8, 0x2e5f8a, 0xc23b2e] },
+  bus: { name: 'SolBus', maxSpeed: 19, accel: 9, turn: 1.3, length: 9.0, width: 2.5, colors: [0x2e6b6b, 0xe8a800, 0x8a2e2e] },
+  pickup: { name: 'SolPickup', maxSpeed: 28, accel: 15, turn: 1.9, length: 4.8, width: 2.0, colors: [0x4a6b4f, 0x8a2e2e, 0x3a3f45] },
 };
 
 const paintMat = (c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.35, metalness: 0.55 });
@@ -26,10 +29,13 @@ export function createCarMesh(type, color) {
   const g = new THREE.Group();
   const paint = paintMat(color);
   const L = spec.length, W = spec.width;
-  const bodyH = type === 'sport' ? 0.55 : type === 'truck' ? 0.9 : 0.7;
+  const bodyH = type === 'sport' ? 0.55 : type === 'truck' ? 0.9 : type === 'van' ? 1.0 : type === 'bus' ? 0.95 : 0.7;
   const bodyY = type === 'sport' ? 0.42 : 0.55;
   const isTruck = type === 'truck';
   const isSport = type === 'sport';
+  const isVan = type === 'van';
+  const isBus = type === 'bus';
+  const isPickup = type === 'pickup';
   const wx = L * 0.32, wz = W / 2 + 0.02;
 
   const add = (mesh, x, y, z) => { mesh.position.set(x, y, z); mesh.castShadow = true; g.add(mesh); return mesh; };
@@ -63,12 +69,19 @@ export function createCarMesh(type, color) {
     ? [[0.5 * L, 0.05 * bodyH], [0.5 * L, 0.55 * bodyH], [0.3 * L, 0.95 * bodyH], [-0.5 * L, 0.95 * bodyH], [-0.5 * L, 0.05 * bodyH]]
     : isSport
       ? [[0.5 * L, 0.04 * bodyH], [0.5 * L, 0.38 * bodyH], [0.1 * L, 0.82 * bodyH], [-0.32 * L, 0.88 * bodyH], [-0.5 * L, 0.78 * bodyH], [-0.5 * L, 0.04 * bodyH]]
-      : [[0.5 * L, 0.04 * bodyH], [0.5 * L, 0.45 * bodyH], [0.18 * L, 0.9 * bodyH], [-0.3 * L, 0.95 * bodyH], [-0.5 * L, 0.85 * bodyH], [-0.5 * L, 0.04 * bodyH]];
+      : isVan
+        ? [[0.5 * L, 0.04 * bodyH], [0.5 * L, 0.88 * bodyH], [0.32 * L, 0.98 * bodyH], [-0.5 * L, 0.98 * bodyH], [-0.5 * L, 0.04 * bodyH]]
+        : isBus
+          ? [[0.5 * L, 0.05 * bodyH], [0.5 * L, 0.92 * bodyH], [-0.5 * L, 0.92 * bodyH], [-0.5 * L, 0.05 * bodyH]]
+          : isPickup
+            ? [[0.5 * L, 0.04 * bodyH], [0.5 * L, 0.45 * bodyH], [0.1 * L, 0.9 * bodyH], [-0.12 * L, 0.95 * bodyH], [-0.12 * L, 0.5 * bodyH], [-0.5 * L, 0.5 * bodyH], [-0.5 * L, 0.04 * bodyH]]
+            : [[0.5 * L, 0.04 * bodyH], [0.5 * L, 0.45 * bodyH], [0.18 * L, 0.9 * bodyH], [-0.3 * L, 0.95 * bodyH], [-0.5 * L, 0.85 * bodyH], [-0.5 * L, 0.04 * bodyH]];
   const bodyShell = profileShell(prof, W * 0.84, paint);
   bodyShell.position.y = bodyBaseY;
   g.add(bodyShell);
   // hood lid: thin panel hugging the sloped hood line (front edge dipped)
-  if (!isTruck) {
+  // — flat-front van/bus have no sloped hood
+  if (!isTruck && !isVan && !isBus) {
     const hoodLen = isSport ? L * 0.34 : L * 0.27;
     const hood = new THREE.Mesh(new THREE.BoxGeometry(hoodLen, 0.04, W * 0.88), paint);
     hood.rotation.z = -0.2;
@@ -108,6 +121,85 @@ export function createCarMesh(type, color) {
       const mirror = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.18, 0.05), paint);
       add(mirror, L * 0.32 + 0.6, bodyY + 1.1, sz * (cabSide + 0.16));
     }
+  } else if (isVan) {
+    // tall cabin: glass band over the high body + side windows on the body
+    const cabLen = L * 0.8, cabH = 0.5, cabX = -L * 0.02;
+    const cabBaseY = bodyY + bodyH / 2 - 0.03;
+    const ghProf = [[0.45 * cabLen, 0], [0.3 * cabLen, cabH], [-0.42 * cabLen, cabH], [-0.48 * cabLen, 0]];
+    const cab = profileShell(ghProf, W * 0.76, glassMat, 0.04);
+    cab.position.set(cabX, cabBaseY, 0);
+    g.add(cab);
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(cabLen * 0.72, 0.06, W * 0.78), paint);
+    add(roof, cabX + 0.03 * cabLen, cabBaseY + cabH + 0.03, 0);
+    // side windows: glass panels set into the tall body sides
+    for (const sz of [-1, 1]) {
+      const win = new THREE.Mesh(new THREE.BoxGeometry(L * 0.55, 0.42, 0.04), glassMat);
+      add(win, -L * 0.08, bodyY + 0.18, sz * (sideX + 0.006));
+      // sliding-door seam + side stripe
+      const seam = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.7, 0.02), darkMat);
+      seam.position.set(L * 0.18, bodyY + 0.05, sz * (sideX + 0.006));
+      g.add(seam);
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(L * 0.9, 0.1, 0.02), darkMat);
+      add(stripe, 0, bodyY - 0.28, sz * (sideX + 0.006));
+      const stalk = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.04, 0.16), darkMat);
+      add(stalk, cabX + cabLen / 2 - 0.12, cabBaseY + cabH / 2 - 0.1, sz * (W * 0.38 + 0.1));
+      const mirror = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.13, 0.05), paint);
+      add(mirror, cabX + cabLen / 2 - 0.12, cabBaseY + cabH / 2 - 0.06, sz * (W * 0.38 + 0.19));
+    }
+  } else if (isBus) {
+    // long body + dark window band along both sides + roof + destination sign
+    const topY = bodyBaseY + 0.92 * bodyH;
+    for (const sz of [-1, 1]) {
+      const band = new THREE.Mesh(new THREE.BoxGeometry(L * 0.88, 0.42, 0.05), glassMat);
+      add(band, 0, bodyY + 0.22, sz * (sideX + 0.006));
+      // window dividers: thin paint pillars splitting the band into windows
+      for (let i = 0; i < 5; i++) {
+        const pillar = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.42, 0.02), paint);
+        pillar.position.set(-L * 0.36 + i * (L * 0.18), bodyY + 0.22, sz * (sideX + 0.035));
+        g.add(pillar);
+      }
+      const skirt = new THREE.Mesh(new THREE.BoxGeometry(L * 0.9, 0.12, 0.05), darkMat);
+      add(skirt, 0, bodyY - bodyH / 2 + 0.05, sz * (sideX + 0.005));
+      const stalk = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.04, 0.2), darkMat);
+      add(stalk, L * 0.42, bodyY + 0.35, sz * (W * 0.42 + 0.11));
+      const mirror = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.18, 0.05), paint);
+      add(mirror, L * 0.42, bodyY + 0.4, sz * (W * 0.42 + 0.21));
+    }
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(L * 0.96, 0.06, W * 0.88), paint);
+    add(roof, 0, topY + 0.03, 0);
+    // windshield: glass panel on the flat front face
+    const shield = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.5, W * 0.8), glassMat);
+    add(shield, L / 2 + 0.02, bodyY + 0.2, 0);
+    // destination sign above the windshield
+    const sign = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.16, W * 0.5), new THREE.MeshStandardMaterial({ color: 0x1c1c22, emissive: 0xe8a800, emissiveIntensity: 0.7 }));
+    add(sign, L / 2 + 0.04, bodyY + 0.55, 0);
+  } else if (isPickup) {
+    // sedan-style cab pushed forward + open bed with low walls behind it
+    const cabLen = L * 0.42, cabH = 0.55, cabX = L * 0.14;
+    const cabBaseY = bodyY + bodyH / 2 - 0.03;
+    const ghProf = [[0.5 * cabLen, 0], [0.36 * cabLen, cabH], [-0.3 * cabLen, cabH], [-0.5 * cabLen, 0]];
+    const cab = profileShell(ghProf, W * 0.76, glassMat, 0.04);
+    cab.position.set(cabX, cabBaseY, 0);
+    g.add(cab);
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(cabLen * 0.66, 0.06, W * 0.78), paint);
+    add(roof, cabX + 0.03 * cabLen, cabBaseY + cabH + 0.03, 0);
+    const cabSide = W * 0.38 + 0.04;
+    for (const sz of [-1, 1]) {
+      const stalk = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.04, 0.16), darkMat);
+      add(stalk, cabX + cabLen / 2 - 0.12, cabBaseY + cabH / 2 - 0.12, sz * (cabSide + 0.06));
+      const mirror = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.13, 0.05), paint);
+      add(mirror, cabX + cabLen / 2 - 0.12, cabBaseY + cabH / 2 - 0.08, sz * (cabSide + 0.15));
+    }
+    // open bed: dark floor + low paint walls on both sides + tailgate
+    const bedX = -L * 0.31, bedLen = L * 0.38, wallH = 0.28, wallY = bodyY + wallH / 2;
+    const floor = new THREE.Mesh(new THREE.BoxGeometry(bedLen, 0.06, W * 0.8), darkMat);
+    add(floor, bedX, bodyY + 0.02, 0);
+    for (const sz of [-1, 1]) {
+      const wall = new THREE.Mesh(new THREE.BoxGeometry(bedLen, wallH, 0.05), paint);
+      add(wall, bedX, wallY, sz * (W * 0.42));
+    }
+    const tailgate = new THREE.Mesh(new THREE.BoxGeometry(0.05, wallH, W * 0.84), paint);
+    add(tailgate, -L / 2 + 0.03, wallY, 0);
   } else {
     const cabLen = isSport ? L * 0.42 : L * 0.48;
     const cabH = isSport ? 0.45 : 0.55;
