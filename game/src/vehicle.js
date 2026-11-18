@@ -2,7 +2,7 @@
 // Bison truck, Vantara GT sport, Solmara PD cruiser) and arcade driving — responsive
 // acceleration, handbrake drift, skid dust, smooth follow camera.
 import * as THREE from 'three';
-import { clamp, angleDiff, softDotTexture, canvasTexture } from './util.js';
+import { clamp, angleDiff, softDotTexture, blobTexture, canvasTexture } from './util.js';
 
 export const VEHICLE_TYPES = {
   sedan: { name: 'Kestrel S', maxSpeed: 27, accel: 15, turn: 1.9, length: 4.4, width: 1.9, colors: [0x2e5f8a, 0x8a2e2e, 0x3a3f45, 0xc8c2b4, 0x4a6b4f, 0x6b4a8a, 0xd98a4b] },
@@ -15,13 +15,16 @@ export const VEHICLE_TYPES = {
   pickup: { name: 'SolPickup', maxSpeed: 28, accel: 15, turn: 1.9, length: 4.8, width: 2.0, colors: [0x4a6b4f, 0x8a2e2e, 0x3a3f45] },
 };
 
-const paintMat = (c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.35, metalness: 0.55 });
+// Paint lifts at night instead of going black: a small emissive of the same
+// colour keeps the body readable in the dark (and reads as a punchier,
+// more saturated grade by day). The red Vantara GT stays red at night.
+const paintMat = (c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.35, metalness: 0.55, emissive: c, emissiveIntensity: 0.22 });
 const glassMat = new THREE.MeshStandardMaterial({ color: 0x1a2530, roughness: 0.15, metalness: 0.6 });
 const darkMat = new THREE.MeshStandardMaterial({ color: 0x1c1c22, roughness: 0.8 });
 const chromeMat = new THREE.MeshStandardMaterial({ color: 0xd8dce0, roughness: 0.25, metalness: 0.9 });
 const tireMat = new THREE.MeshStandardMaterial({ color: 0x141416, roughness: 0.95 });
-const lightMat = new THREE.MeshStandardMaterial({ color: 0xfff6c8, emissive: 0xffe9a0, emissiveIntensity: 0.9 });
-const tailMat = new THREE.MeshStandardMaterial({ color: 0x8a1a1a, emissive: 0xc22a2a, emissiveIntensity: 0.6 });
+const lightMat = new THREE.MeshStandardMaterial({ color: 0xfff6c8, emissive: 0xffe9a0, emissiveIntensity: 1.6 });
+const tailMat = new THREE.MeshStandardMaterial({ color: 0x8a1a1a, emissive: 0xc22a2a, emissiveIntensity: 1.2 });
 
 /** Build a realistic-proportioned car mesh for a type + colour. Returns {group, wheels, steerWheels}. */
 export function createCarMesh(type, color) {
@@ -46,7 +49,7 @@ export function createCarMesh(type, color) {
     geo.rotateX(Math.PI / 2);
     return geo;
   };
-  const fenderMat = new THREE.MeshStandardMaterial({ color, roughness: 0.35, metalness: 0.55, side: THREE.DoubleSide });
+  const fenderMat = new THREE.MeshStandardMaterial({ color, roughness: 0.35, metalness: 0.55, side: THREE.DoubleSide, emissive: color, emissiveIntensity: 0.22 });
   const bodyBaseY = bodyY - bodyH / 2; // world y of the body shell bottom
   const sideX = W * 0.42 + 0.05; // half-width of the bevelled body shell side
   // Side-profile shape extruded across the width, bevelled edges -> a sculpted
@@ -274,6 +277,30 @@ export function createCarMesh(type, color) {
     const tl = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.14, 0.4), tailMat);
     tl.position.set(-L / 2 - 0.06, bodyY + 0.08, sz * (W / 2 - 0.35)); g.add(tl);
   }
+  // headlight + taillight glow sprites (fake bloom): additive halos so the
+  // lights read at night — the v3 chase car's lamps were pinpricks and the
+  // body went black. Same sprite family as the police light-bar halo.
+  const glowTex = softDotTexture();
+  for (const sz of [-1, 1]) {
+    const head = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0xffe9a0, transparent: true, opacity: 0.3, depthWrite: false, blending: THREE.AdditiveBlending }));
+    head.scale.set(1.3, 1.3, 1);
+    head.position.set(L / 2 + 0.15, bodyY + 0.08, sz * (W / 2 - 0.35));
+    g.add(head);
+    const tail = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0xff2a2a, transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending }));
+    tail.scale.set(1.1, 1.1, 1);
+    tail.position.set(-L / 2 - 0.15, bodyY + 0.08, sz * (W / 2 - 0.35));
+    g.add(tail);
+  }
+  // contact shadow: dark ellipse under the car so it never looks afloat
+  // (real sun shadows are weak at night; the blob grounds it in every shot)
+  const contact = new THREE.Mesh(
+    new THREE.CircleGeometry(1, 20),
+    new THREE.MeshBasicMaterial({ map: blobTexture(), transparent: true, depthWrite: false }),
+  );
+  contact.rotation.x = -Math.PI / 2;
+  contact.scale.set(L * 0.62, W * 0.62, 1);
+  contact.position.y = 0.03;
+  g.add(contact);
   const grille = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.22, W * 0.5), chromeMat);
   grille.position.set(L / 2 + 0.07, bodyY - 0.12, 0); g.add(grille);
   // rounded bumpers: horizontal cylinders across the car width, not flat boxes

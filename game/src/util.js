@@ -54,6 +54,23 @@ export function softDotTexture() {
   return softDot;
 }
 
+/** Dark radial blob (contact shadow): black centre fading to transparent.
+ *  One shared texture for the grounding disc under every car, pedestrian and
+ *  boat — real sun shadows are long and soft at golden hour and nearly absent
+ *  at night, so the blob is what keeps objects from looking afloat. */
+let blob = null;
+export function blobTexture() {
+  if (blob) return blob;
+  blob = canvasTexture(64, 64, (g) => {
+    const grad = g.createRadialGradient(32, 32, 2, 32, 32, 30);
+    grad.addColorStop(0, 'rgba(0,0,0,0.55)');
+    grad.addColorStop(0.55, 'rgba(0,0,0,0.28)');
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = grad; g.fillRect(0, 0, 64, 64);
+  });
+  return blob;
+}
+
 // ---- World layout constants (one district, ~4x4 blocks, sea on the west) ----
 export const ROAD_CENTERS = [-96, -48, 0, 48, 96];
 export const ROAD_W = 12;

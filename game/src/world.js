@@ -2,7 +2,7 @@
 // Plaza Mar clock tower as landmarks. Sun-soaked late afternoon: warm light, soft
 // shadows, pastel facades, canvas-drawn window/sign textures — no external assets.
 import * as THREE from 'three';
-import { canvasTexture, mulberry32, randRange, randInt, pick, blockSpan, ROAD_CENTERS, ROAD_W, SEA_X, WORLD_MIN, WORLD_MAX } from './util.js';
+import { canvasTexture, mulberry32, randRange, randInt, pick, blockSpan, blobTexture, ROAD_CENTERS, ROAD_W, SEA_X, WORLD_MIN, WORLD_MAX } from './util.js';
 
 const MAP_EXTENT = 132; // ground texture covers [-132, 132]^2
 
@@ -83,8 +83,12 @@ function groundTexture() {
   });
 }
 
-/** Window facade texture: floors x columns of lit/unlit windows on a wall colour. */
-function facadeTexture(base, win, floors, cols, litRatio) {
+/** Window facade texture: floors x columns of lit/unlit windows on a wall colour.
+ *  `accent` (towers only): a pale vertical stripe down the centre + dark
+ *  corner strips, so a tower face reads as designed from any angle — the
+ *  drive shot's tower was a plain window grid because its blade sign sat at
+ *  the building centre, out of frame. */
+function facadeTexture(base, win, floors, cols, litRatio, accent = false) {
   const rng = mulberry32(base.length * 7919 + floors * 131 + cols * 17);
   return canvasTexture(256, 256, (g, W, H) => {
     g.fillStyle = base; g.fillRect(0, 0, W, H);
@@ -98,6 +102,18 @@ function facadeTexture(base, win, floors, cols, litRatio) {
     }
     g.fillStyle = 'rgba(0,0,0,0.12)';
     g.fillRect(0, H - 10, W, 10);
+    // horizontal floor bands: a dark line at each floor boundary breaks the
+    // flat window grid, so a tower face never reads as one plain slab
+    g.fillStyle = 'rgba(0,0,0,0.22)';
+    for (let f = 1; f < floors; f++) g.fillRect(0, f * fh - 2, W, 3);
+    if (accent) {
+      // tower accent: pale centre stripe + dark corner strips (framing-free)
+      g.fillStyle = 'rgba(255,255,255,0.14)';
+      g.fillRect(W * 0.42, 0, W * 0.16, H);
+      g.fillStyle = 'rgba(0,0,0,0.18)';
+      g.fillRect(0, 0, W * 0.07, H);
+      g.fillRect(W * 0.93, 0, W * 0.07, H);
+    }
   });
 }
 
@@ -108,6 +124,17 @@ function signTexture(text, bg, fg, sub) {
     g.fillText(text, W / 2, sub ? H / 2 - 16 : H / 2);
     if (sub) { g.font = 'bold 26px Arial, sans-serif'; g.fillText(sub, W / 2, H / 2 + 34); }
     g.strokeStyle = fg; g.lineWidth = 6; g.strokeRect(4, 4, W - 8, H - 8);
+  });
+}
+
+function vSignTexture(text, bg, fg) {
+  // vertical blade sign: portrait canvas, text rotated to read bottom-to-top
+  return canvasTexture(128, 512, (g, W, H) => {
+    g.fillStyle = bg; g.fillRect(0, 0, W, H);
+    g.fillStyle = fg; g.font = 'bold 58px Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.save(); g.translate(W / 2, H / 2); g.rotate(-Math.PI / 2);
+    g.fillText(text, 0, 0); g.restore();
+    g.strokeStyle = fg; g.lineWidth = 5; g.strokeRect(4, 4, W - 8, H - 8);
   });
 }
 
@@ -194,6 +221,7 @@ export function createWorld(scene, seed) {
   const signMats = []; // {mat, mult} — every sign/billboard/neon emissive material, for setTimeOfDay
   let lampRoomMat = null;
   let beamMat = null;
+  let groundMat = null; // ground material, for the wet-road roughness per preset
 
   // ---- sky dome: 4 time-of-day textures, 'golden' is the v2 default ----
   function makeSkyTexture(stops, clouds, stars) {
@@ -210,16 +238,19 @@ export function createWorld(scene, seed) {
       if (clouds) {
         g.fillStyle = clouds;
         for (let i = 0; i < 14; i++) {
-          const cx = rng() * W, cy = 40 + rng() * 160, w = 60 + rng() * 140;
+          // small soft clouds (same 3 rng calls each as before, so the
+          // seeded world layout after the sky does not reshuffle): the v1
+          // 200 px clouds rendered as one giant white UFO over the hero
+          const cx = rng() * W, cy = 40 + rng() * 160, w = 30 + rng() * 60;
           g.beginPath(); g.ellipse(cx, cy, w, w * 0.22, 0, 0, Math.PI * 2); g.fill();
         }
       }
     });
   }
   const skyTextures = {
-    golden: makeSkyTexture([[0, '#5a6fc0'], [0.38, '#9a7ec4'], [0.6, '#e8937a'], [0.78, '#ffb37a'], [0.92, '#ff8f5e'], [1, '#f2703f']], 'rgba(255,255,255,0.75)', false),
-    day: makeSkyTexture([[0, '#2f6fd0'], [0.45, '#6fb0e8'], [0.75, '#a8d4f0'], [1, '#d8ecf8']], 'rgba(255,255,255,0.9)', false),
-    dusk: makeSkyTexture([[0, '#2a2350'], [0.35, '#6a3a78'], [0.6, '#c65a6a'], [0.8, '#ff8a5e'], [1, '#e86a3f']], 'rgba(255,200,180,0.5)', false),
+    golden: makeSkyTexture([[0, '#5a6fc0'], [0.38, '#9a7ec4'], [0.6, '#e8937a'], [0.78, '#ffb37a'], [0.92, '#ff8f5e'], [1, '#f2703f']], 'rgba(255,255,255,0.4)', false),
+    day: makeSkyTexture([[0, '#2f6fd0'], [0.45, '#6fb0e8'], [0.75, '#a8d4f0'], [1, '#d8ecf8']], 'rgba(255,255,255,0.5)', false),
+    dusk: makeSkyTexture([[0, '#2a2350'], [0.35, '#6a3a78'], [0.6, '#c65a6a'], [0.8, '#ff8a5e'], [1, '#e86a3f']], 'rgba(255,200,180,0.3)', false),
     night: makeSkyTexture([[0, '#04060f'], [0.5, '#0a1428'], [0.8, '#12233d'], [1, '#1a2f4d']], 'rgba(200,210,230,0.12)', true),
   };
   const sky = new THREE.Mesh(
@@ -251,11 +282,13 @@ export function createWorld(scene, seed) {
   scene.add(ambient);
 
   // Time-of-day presets. 'golden' reproduces the v2 look exactly.
+  // ground = ground roughness: wet asphalt at night (the headlight cone
+  // glosses the road ahead), dry and matte by day.
   const TIME_PRESETS = {
-    golden: { fog: [0xef9e63, 180, 520], sun: [0xffe3b3, 2.4, [-170, 110, 70]], hemi: [0xbfd9ee, 0x8a6f52, 0.75], ambient: [0xffe8cc, 0.25], disc: [0xfff2c0, [-420, 55, -60]], lamp: 1.6, sign: 0.25, beam: 0.22 },
-    day: { fog: [0xa8c8e8, 200, 600], sun: [0xfff5e0, 2.8, [80, 180, 60]], hemi: [0xcfe8ff, 0x9a8a6a, 0.9], ambient: [0xffffff, 0.35], disc: [0xfff8d0, [200, 220, 40]], lamp: 0.2, sign: 0.1, beam: 0.12 },
-    dusk: { fog: [0x8a5a7a, 150, 450], sun: [0xff9a5a, 2.0, [-220, 40, 40]], hemi: [0x8a7ab8, 0x5a4a3a, 0.7], ambient: [0xffd0b0, 0.28], disc: [0xff8a4a, [-430, 28, -40]], lamp: 2.2, sign: 0.6, beam: 0.3 },
-    night: { fog: [0x0a1428, 120, 380], sun: [0x9ab8e8, 0.8, [60, 180, -40]], hemi: [0x2a3a5a, 0x1a1a22, 0.5], ambient: [0x334466, 0.22], disc: [0xe8eef8, [140, 230, 90]], lamp: 3.0, sign: 1.0, beam: 0.38 },
+    golden: { fog: [0xef9e63, 180, 520], sun: [0xffe3b3, 2.4, [-170, 110, 70]], hemi: [0xbfd9ee, 0x8a6f52, 0.75], ambient: [0xffe8cc, 0.25], disc: [0xfff2c0, [-420, 55, -60]], lamp: 1.6, sign: 0.25, beam: 0.15, ground: 0.95 },
+    day: { fog: [0xa8c8e8, 200, 600], sun: [0xfff5e0, 2.8, [80, 180, 60]], hemi: [0xcfe8ff, 0x9a8a6a, 0.9], ambient: [0xffffff, 0.35], disc: [0xfff8d0, [200, 220, 40]], lamp: 0.2, sign: 0.1, beam: 0.08, ground: 0.95 },
+    dusk: { fog: [0x8a5a7a, 150, 450], sun: [0xff9a5a, 2.0, [-220, 40, 40]], hemi: [0x8a7ab8, 0x5a4a3a, 0.7], ambient: [0xffd0b0, 0.28], disc: [0xff8a4a, [-430, 28, -40]], lamp: 2.2, sign: 0.6, beam: 0.22, ground: 0.6 },
+    night: { fog: [0x0a1428, 120, 380], sun: [0x9ab8e8, 0.8, [60, 180, -40]], hemi: [0x2a3a5a, 0x1a1a22, 0.5], ambient: [0x334466, 0.22], disc: [0xe8eef8, [140, 230, 90]], lamp: 3.0, sign: 1.0, beam: 0.3, ground: 0.4 },
   };
   function setTimeOfDay(preset) {
     const p = TIME_PRESETS[preset];
@@ -274,6 +307,7 @@ export function createWorld(scene, seed) {
     if (lampRoomMat) lampRoomMat.emissiveIntensity = p.lamp * 1.4;
     if (beamMat) beamMat.opacity = p.beam;
     for (const s of signMats) s.mat.emissiveIntensity = p.sign * s.mult;
+    if (groundMat) groundMat.roughness = p.ground;
   }
 
   function districtAt(x, z) {
@@ -285,9 +319,10 @@ export function createWorld(scene, seed) {
   }
 
   // ---- ground ----
+  groundMat = new THREE.MeshStandardMaterial({ map: groundTexture(), roughness: 0.95, metalness: 0 });
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(MAP_EXTENT * 2, MAP_EXTENT * 2),
-    new THREE.MeshStandardMaterial({ map: groundTexture(), roughness: 0.95, metalness: 0 }),
+    groundMat,
   );
   ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true;
   group.add(ground);
@@ -315,7 +350,7 @@ export function createWorld(scene, seed) {
   // ---- shared geometries / materials ----
   const boxGeo = new THREE.BoxGeometry(1, 1, 1);
   const facadeMats = BUILDING_TYPES.map((t) => {
-    const tex = facadeTexture(t.base, t.win, t.floors, t.cols, 0.28);
+    const tex = facadeTexture(t.base, t.win, t.floors, t.cols, 0.28, t.kind === 'tower');
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
     return new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85, metalness: 0.02 });
   });
@@ -331,6 +366,7 @@ export function createWorld(scene, seed) {
   const tileMat = new THREE.MeshStandardMaterial({ color: 0x9a5a44, roughness: 0.85 });
   const gardenMat = new THREE.MeshStandardMaterial({ color: 0x5f8f46, roughness: 1 });
   const glassMat = new THREE.MeshStandardMaterial({ color: 0x2a4a5e, roughness: 0.15, metalness: 0.5 });
+  const trimMat = new THREE.MeshStandardMaterial({ color: 0xe8ddc4, roughness: 0.8 }); // pale stone pilaster trim
   const doorMat = new THREE.MeshStandardMaterial({ color: 0x2e2620, roughness: 0.7 });
   const frameMat = new THREE.MeshStandardMaterial({ color: 0x3a3230, roughness: 0.8 });
   const benchMat = new THREE.MeshStandardMaterial({ color: 0x7a5a38, roughness: 0.9 });
@@ -398,7 +434,8 @@ export function createWorld(scene, seed) {
   // ---- buildings ----
   const plazaBlock = { bx: 1, bz: 1 };
   const parkBlock = { bx: 3, bz: 0 };
-  let neonCount = 0; // downtown vertical neon signs (max 2)
+  let neonCount = 0; // downtown vertical neon signs (max 4)
+  let bladeCount = 0; // tower blade signs (one per tower)
   for (let bx = 0; bx < 4; bx++) for (let bz = 0; bz < 4; bz++) {
     if (bx === plazaBlock.bx && bz === plazaBlock.bz) continue;
     if (bx === parkBlock.bx && bz === parkBlock.bz) continue;
@@ -449,6 +486,22 @@ export function createWorld(scene, seed) {
           // cornice band protruding at the setback
           addBox(roofMat2, tw + 0.5, 0.45, td + 0.5, cx, y - 0.1, cz);
         }
+      }
+      // corner pilasters + lit crown band (tower/office): vertical fins break
+      // the flat window-grid facade at the silhouette edges, so the tower
+      // never reads as a plain box — the v3 drive shot's grey slab was the
+      // failure this fixes. Fins run the base tier; the crown band glows at
+      // dusk/night (tracked by setTimeOfDay through signMats).
+      if (type.kind === 'tower' || type.kind === 'office') {
+        const baseH = h * tierDefs[0].hf;
+        for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+          addBox(trimMat, 0.7, baseH, 0.7, cx + sx * (w / 2 - 0.1), baseH / 2, cz + sz * (d / 2 - 0.1));
+        }
+      }
+      if (type.kind === 'tower') {
+        const crownBandMat = new THREE.MeshStandardMaterial({ color: 0xffd23c, emissive: 0xffc95e, emissiveIntensity: 0.6, roughness: 0.5 });
+        signMats.push({ mat: crownBandMat, mult: 2 });
+        addBox(crownBandMat, topW + 0.3, 0.5, topD + 0.3, cx, h + 0.1, cz);
       }
       // roof: flat + parapet, pitched prism, rooftop garden, or office crown
       const roofRoll = rng();
@@ -541,13 +594,29 @@ export function createWorld(scene, seed) {
         awn.rotation.x = 0.5;
         awn.castShadow = true; awn.receiveShadow = true; group.add(awn);
       }
-      // downtown neon: vertical glowing sign on towers (2 max, tracked for setTimeOfDay)
-      if (bx === 2 && bz === 0 && (type.kind === 'tower' || type.kind === 'office') && neonCount < 2) {
+      // tower blade sign: a tall vertical neon blade on the tower's south
+      // face — the drive shot's tower read as a plain slab because its face
+      // had nothing but a window grid; a 4.5 m blade with a vertical name
+      // breaks the face at any angle. Mounted on the base tier (y = 0.35h,
+      // 12 m tall) so it sits flush, not floating past a setback.
+      if (type.kind === 'tower') {
+        const bladeTexts = [['SOLMARA', '#ff2e7e'], ['TORRE SOL', '#00d8ff'], ['VANTARA', '#ff8a00'], ['HOTEL', '#7a3a8a']];
+        const [bt, bb] = bladeTexts[bladeCount % bladeTexts.length];
+        bladeCount++;
+        const bladeTex = vSignTexture(bt, bb, '#ffffff');
+        const bladeMat = new THREE.MeshStandardMaterial({ map: bladeTex, emissive: 0xffffff, emissiveMap: bladeTex, emissiveIntensity: 1.0, roughness: 0.4 });
+        signMats.push({ mat: bladeMat, mult: 4 }); // 4x brighter than a shop sign
+        const blade = new THREE.Mesh(new THREE.PlaneGeometry(4.5, 12), bladeMat);
+        blade.position.set(cx, h * 0.35, cz + d / 2 + 0.08);
+        group.add(blade);
+      }
+      // downtown neon: vertical glowing sign on offices (4 max, tracked for setTimeOfDay)
+      if (bx === 2 && bz === 0 && type.kind === 'office' && neonCount < 4) {
         neonCount++;
-        const neonTex = signTexture(neonCount === 1 ? 'SOL' : 'NEON', neonCount === 1 ? '#ff2e7e' : '#00d8ff', '#ffffff');
+        const neonTex = signTexture(neonCount === 1 ? 'SOL' : neonCount === 2 ? 'NEON' : neonCount === 3 ? 'SOLMARA' : 'HOTEL', neonCount === 1 ? '#ff2e7e' : neonCount === 2 ? '#00d8ff' : neonCount === 3 ? '#ff8a00' : '#7a3a8a', '#ffffff');
         const neonMat = new THREE.MeshStandardMaterial({ map: neonTex, emissive: 0xffffff, emissiveMap: neonTex, emissiveIntensity: 1.0, roughness: 0.4 });
         signMats.push({ mat: neonMat, mult: 4 }); // 4x brighter than a shop sign
-        const neon = new THREE.Mesh(new THREE.PlaneGeometry(2.2, h * 0.55), neonMat);
+        const neon = new THREE.Mesh(new THREE.PlaneGeometry(3.0, h * 0.55), neonMat);
         neon.position.set(cx, h * 0.55, cz + d / 2 + 0.08);
         group.add(neon);
       }
@@ -646,13 +715,21 @@ export function createWorld(scene, seed) {
   }
 
   // ---- MARINA props: 3 boats at sea + wooden pier + extra beach palms ----
+  // Boats sit ON the visible sea (x < -132, where the ground plane ends and
+  // the sea plane shows) — the v3 spots (-120..-128) were on the sand-textured
+  // ground and read as beached. Hull bottom (-0.65) sits below the waterline
+  // (-0.15) so the hull is waterborne, and a dark ellipse on the water under
+  // each hull sells the float. Water-level guard: any boat below waterLevel +
+  // 0.1 is lifted to waterLevel + 0.2 (never on the sand).
+  const WATER_Y = -0.15;
   const woodMat = new THREE.MeshStandardMaterial({ color: 0x8a6a44, roughness: 0.9 });
   const sailMat = new THREE.MeshStandardMaterial({ color: 0xf5efdd, roughness: 0.85, side: THREE.DoubleSide });
-  const boatSpots = [[-120, -78], [-128, -66], [-124, -60]];
+  const boatSpots = [[-140, -78], [-148, -64], [-143, -56]];
   for (let bi2 = 0; bi2 < boatSpots.length; bi2++) {
     const [bx2, bz2] = boatSpots[bi2];
     const boat = new THREE.Group();
     boat.position.set(bx2 + randRange(rng, -1.5, 1.5), 0, bz2 + randRange(rng, -1.5, 1.5));
+    if (boat.position.y < WATER_Y + 0.1) boat.position.y = WATER_Y + 0.2;
     boat.rotation.y = randRange(rng, -0.5, 0.5);
     const hull = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), woodMat);
     hull.scale.set(3.4, 0.9, 1.5); hull.position.y = 0.25; boat.add(hull);
@@ -664,6 +741,16 @@ export function createWorld(scene, seed) {
     sail.position.set(0.1, 0.9, 0); boat.add(sail);
     const stern = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1.2, 6), woodMat);
     stern.rotation.z = -Math.PI / 2; stern.position.set(-3.2, 0.5, 0); boat.add(stern);
+    // water shadow: dark ellipse on the sea just above the waterline, wider
+    // than the hull so a dark ring reads around the boat
+    const waterShadow = new THREE.Mesh(
+      new THREE.CircleGeometry(1, 20),
+      new THREE.MeshBasicMaterial({ map: blobTexture(), transparent: true, depthWrite: false }),
+    );
+    waterShadow.rotation.x = -Math.PI / 2;
+    waterShadow.scale.set(4.6, 2.6, 1);
+    waterShadow.position.y = WATER_Y + 0.05;
+    boat.add(waterShadow);
     group.add(boat);
   }
   // pier planks from the beach (x -102..-112, z -72), cylinder posts — no collider (over water)
@@ -680,6 +767,38 @@ export function createWorld(scene, seed) {
   for (const pz2 of [-40, -10, 20, 50]) {
     addPalm(-100 + randRange(rng, -1.5, 1.5), pz2 + randRange(rng, -2, 2), randRange(rng, 0.9, 1.1));
   }
+  // ---- hero foreground: fixed beach props on the sand south of the pier ----
+  // The v3 hero's foreground was empty sand. Two palms, a striped umbrella
+  // and crates sit in the hero camera's foreground (z -95..-125, x -118..-128)
+  // — fixed positions (not RNG) so the staging is exact, and placed off the
+  // camera-to-Dario axis so nothing occludes the hero figure.
+  addPalm(-126, -104, 1.05);
+  addPalm(-118, -122, 0.95);
+  {
+    const umbPole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 2.4, 8), poleMat);
+    umbPole.position.set(-121, 1.2, -98); umbPole.castShadow = true; group.add(umbPole);
+    const umbCanopy = new THREE.Mesh(new THREE.ConeGeometry(1.7, 0.9, 8), awningMats[0]);
+    umbCanopy.position.set(-121, 2.7, -98); umbCanopy.castShadow = true; group.add(umbCanopy);
+    const towel = new THREE.Mesh(boxGeo, new THREE.MeshStandardMaterial({ color: 0x2e6b6b, roughness: 0.9 }));
+    towel.scale.set(1.8, 0.06, 0.9); towel.position.set(-119.5, 0.05, -99.5); towel.rotation.y = 0.4; towel.receiveShadow = true; group.add(towel);
+  }
+  addBox(woodMat, 0.9, 0.9, 0.9, -128, 0.45, -112, 0.3);
+  addBox(woodMat, 0.7, 0.7, 0.7, -127.2, 0.35, -111.2, 0.9);
+  addBox(woodMat, 0.9, 0.9, 0.9, -120, 0.45, -114, 0.15);
+  // ---- complete-shot foreground: umbrella + crates on the sand the
+  // complete camera looks across (z -116..-122, x -112..-117) — the v1
+  // complete frame's lower third was bare sand; these sit off the
+  // camera-to-Dario axis, so neither the pair nor the lighthouse is covered
+  {
+    const umbPole2 = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 2.4, 8), poleMat);
+    umbPole2.position.set(-113, 1.2, -118); umbPole2.castShadow = true; group.add(umbPole2);
+    const umbCanopy2 = new THREE.Mesh(new THREE.ConeGeometry(1.7, 0.9, 8), awningMats[1]);
+    umbCanopy2.position.set(-113, 2.7, -118); umbCanopy2.castShadow = true; group.add(umbCanopy2);
+    const towel2 = new THREE.Mesh(boxGeo, new THREE.MeshStandardMaterial({ color: 0xc0392b, roughness: 0.9 }));
+    towel2.scale.set(1.8, 0.06, 0.9); towel2.position.set(-111.5, 0.05, -119.5); towel2.rotation.y = -0.3; towel2.receiveShadow = true; group.add(towel2);
+  }
+  addBox(woodMat, 0.9, 0.9, 0.9, -116, 0.45, -120, 0.5);
+  addBox(woodMat, 0.7, 0.7, 0.7, -115.2, 0.35, -119.2, 0.2);
 
   // ---- PASAR SOL props: 6 market stalls + crates ----
   const fruitMats = [0xe86a3f, 0xe8c33c, 0x7a3a8a].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.8 }));

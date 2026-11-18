@@ -56,6 +56,24 @@ node serve.ts
 - **Save** — progress (money, missions, position) persists in localStorage.
 - **Sound** — synthesized engine, siren, gunshot, pickup and fanfare.
 
+## Systems
+
+| File | System |
+| --- | --- |
+| `game/src/world.js` | City, districts, landmarks, time of day |
+| `game/src/player.js` | On-foot character, camera |
+| `game/src/vehicle.js` | Cars, handling, headlights |
+| `game/src/traffic.js` | NPC traffic + pedestrians |
+| `game/src/police.js` | Wanted level, cruiser pursuit |
+| `game/src/missions.js` | Story jobs, beacons, rewards |
+| `game/src/combat.js` | Shooting, tracers, impacts |
+| `game/src/hud.js` | HUD, minimap, district label |
+| `game/src/audio.js` | Synthesized WebAudio sounds |
+| `game/src/save.js` | localStorage progress |
+| `game/src/shots.js` | Staged screenshots + self-test |
+| `game/src/util.js` | Shared helpers |
+| `game/src/main.js` | Game loop, renderer setup |
+
 ## Screenshots
 
 Staged deterministically (`?shot=hero|drive|chase|complete&seed=7`) and rendered

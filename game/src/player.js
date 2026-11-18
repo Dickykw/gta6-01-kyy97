@@ -1,7 +1,7 @@
 // Dario Voss on foot: realistic-proportioned low-poly humanoid (1.8 m), natural walk/run
 // swing, third-person orbit camera with mouse drag + wheel zoom, enter/exit vehicles.
 import * as THREE from 'three';
-import { clamp, angleDiff, angleLerp } from './util.js';
+import { clamp, angleDiff, angleLerp, blobTexture } from './util.js';
 
 const skinMat = new THREE.MeshStandardMaterial({ color: 0xc98e6a, roughness: 0.75 });
 const jacketMat = new THREE.MeshStandardMaterial({ color: 0x2e4a5e, roughness: 0.85 });
@@ -68,6 +68,16 @@ export function createPlayerMesh() {
   const nose = mesh(noseGeo, skinMat);
   nose.position.set(0, 1.6, 0.14);
   g.add(legL, legR, torso, collar, pocketL, pocketR, neck, armL, armR, head, hair, nose);
+  // contact shadow: dark ellipse under the feet so the figure never looks
+  // afloat (pedestrians share this mesh; the blob is cheap and follows the walk)
+  const contact = new THREE.Mesh(
+    new THREE.CircleGeometry(1, 16),
+    new THREE.MeshBasicMaterial({ map: blobTexture(), transparent: true, depthWrite: false }),
+  );
+  contact.rotation.x = -Math.PI / 2;
+  contact.scale.set(0.55, 0.55, 1);
+  contact.position.y = 0.02;
+  g.add(contact);
   return { group: g, armL, armR, legL, legR, torso, head };
 }
 
@@ -98,6 +108,14 @@ export class Player {
     this.inVehicle = null;
     this.mesh.position.set(x, 0, z);
     scene.add(this.mesh);
+    // hero light: a small warm point light riding with Dario so the player
+    // never goes black at night and separates from the background at
+    // thumbnail size (rim/fill in one cheap light; distance-limited, no
+    // shadow). Only on the real player — pedestrians share createPlayerMesh
+    // and must NOT each get a light.
+    this.heroLight = new THREE.PointLight(0xffd9a0, 5, 9, 2);
+    this.heroLight.position.set(0, 2.6, 0);
+    this.mesh.add(this.heroLight);
     // camera orbit state
     this.camYaw = Math.PI * 0.75;
     this.camPitch = 0.32;

@@ -8,6 +8,15 @@
   html, body { margin: 0; height: 100%; overflow: hidden; background: #f2c491; font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; }
   canvas { display: block; }
   #hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; color: #fff; }
+  /* vignette: soft radial darkening at the corners only (fake grade, no
+     post-processing composer — deterministic, network-free, and it never
+     covers the HUD, which sits above it) */
+  #vignette { position: fixed; inset: 0; pointer-events: none; z-index: 3; background: radial-gradient(ellipse at center, transparent 58%, rgba(0,0,0,0.16) 100%); }
+  /* rain: faint diagonal streaks, shown only in the night-chase shot
+     (body.shot-chase, set by shots.js) — deterministic DOM rain, no
+     particles, no post-processing */
+  #rain { display: none; position: fixed; inset: 0; pointer-events: none; z-index: 4; background-image: repeating-linear-gradient(105deg, transparent 0 14px, rgba(180,200,230,0.10) 14px 15px, transparent 15px 34px, rgba(180,200,230,0.07) 34px 35px, transparent 35px 52px); }
+  body.shot-chase #rain { display: block; }
   #hud-top-left { position: absolute; top: 16px; left: 16px; max-width: 380px; }
   #district { font-family: 'Arial Black', Arial, sans-serif; font-size: 15px; letter-spacing: 3px; color: #ffd23c; text-shadow: 0 2px 6px rgba(0,0,0,.7); }
   #mission-box { margin-top: 6px; background: rgba(12,16,24,.72); border-left: 5px solid #ffd23c; border-radius: 6px; padding: 10px 14px; box-shadow: 0 4px 18px rgba(0,0,0,.35); }
@@ -90,6 +99,8 @@
 </style>
 </head>
 <body>
+<div id="vignette"></div>
+<div id="rain"></div>
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.min.js" } }
 </script>
