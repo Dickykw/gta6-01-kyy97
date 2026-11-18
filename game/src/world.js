@@ -301,17 +301,17 @@ export function createWorld(scene, seed) {
   const plaza = blockSpan(1);
   const pcx = (plaza.lo + plaza.hi) / 2, pcz = (plaza.lo + plaza.hi) / 2;
   const towerMat = new THREE.MeshStandardMaterial({ color: 0xd9c9a8, roughness: 0.85 });
-  addBox(towerMat, 7, 30, 7, pcx, 15, pcz);
+  addBox(towerMat, 6, 20, 6, pcx, 10, pcz);
   const clockTex = clockTexture();
-  for (const [dx, dz, ry] of [[0, 3.56, 0], [0, -3.56, Math.PI], [3.56, 0, Math.PI / 2], [-3.56, 0, -Math.PI / 2]]) {
-    const face = new THREE.Mesh(new THREE.PlaneGeometry(5, 5), new THREE.MeshStandardMaterial({ map: clockTex, roughness: 0.6 }));
-    face.position.set(pcx + dx, 24, pcz + dz); face.rotation.y = ry; group.add(face);
+  for (const [dx, dz, ry] of [[0, 3.06, 0], [0, -3.06, Math.PI], [3.06, 0, Math.PI / 2], [-3.06, 0, -Math.PI / 2]]) {
+    const face = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 4.4), new THREE.MeshStandardMaterial({ map: clockTex, roughness: 0.6 }));
+    face.position.set(pcx + dx, 15.5, pcz + dz); face.rotation.y = ry; group.add(face);
   }
-  const roof = new THREE.Mesh(new THREE.ConeGeometry(5.4, 5, 4), new THREE.MeshStandardMaterial({ color: 0x8a4a3a, roughness: 0.8 }));
-  roof.position.set(pcx, 32.5, pcz); roof.rotation.y = Math.PI / 4; roof.castShadow = true; group.add(roof);
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(4.6, 4.4, 4), new THREE.MeshStandardMaterial({ color: 0x8a4a3a, roughness: 0.8 }));
+  roof.position.set(pcx, 22.2, pcz); roof.rotation.y = Math.PI / 4; roof.castShadow = true; group.add(roof);
   const flag = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 1.4), new THREE.MeshStandardMaterial({ color: 0xff5f6d, side: THREE.DoubleSide, roughness: 0.8 }));
-  flag.position.set(pcx + 1.2, 36, pcz); group.add(flag);
-  addCollider(pcx, pcz, 3.8, 3.8);
+  flag.position.set(pcx + 1.2, 25.5, pcz); group.add(flag);
+  addCollider(pcx, pcz, 3.2, 3.2);
   // plaza benches + bollards
   const benchMat = new THREE.MeshStandardMaterial({ color: 0x7a5a38, roughness: 0.9 });
   for (let i = 0; i < 6; i++) {

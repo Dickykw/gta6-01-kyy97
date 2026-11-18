@@ -97,7 +97,8 @@ export class Missions {
     } else {
       this.target = { ...this.def.pickup, label: this.def.pickup.label };
     }
-    this._showBeacon();
+    // escape has no fixed target: the beacon would sit on the player
+    if (!this.def || this.def.kind !== 'escape') this._showBeacon();
     this.onEvent && this.onEvent('briefing', this.def);
   }
 

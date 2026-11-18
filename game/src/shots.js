@@ -47,7 +47,7 @@ export function stageShot(name, game) {
     car.x = -58; car.z = 0; car.heading = 0; car.speed = 18;
     putPlayerInCar(game, car);
     game.missions.start(0);
-    game.missions.accept();
+    game.acceptMission();
     game.missions.stage = 'return';
     game.missions.target = { x: 30, z: -54, label: 'Hotel Marina' };
     game.missions._showBeacon();
@@ -61,7 +61,7 @@ export function stageShot(name, game) {
     putPlayerInCar(game, car);
     game.missions.index = 3;
     game.missions.start(3);
-    game.missions.accept();
+    game.acceptMission();
     game.police.setWanted(2);
     // force two cruisers right behind, mid-chase
     for (let i = 0; i < 2; i++) {
@@ -69,35 +69,39 @@ export function stageShot(name, game) {
     }
     game.police.cars.forEach((c, i) => {
       c.x = car.x - 14 - i * 9; c.z = (i === 0 ? 3 : -3); c.heading = 0; c.speed = 24;
+      c.mesh.position.set(c.x, 0, c.z); c.mesh.rotation.y = c.heading;
     });
     stepWorld(game, 1.5);
-    setCamera(game, 0.1, 0.34, 10, car);
+    setCamera(game, Math.PI / 2, 0.3, 15, car); // side-tracking view: player car + cruisers behind it in frame
   } else if (name === 'complete') {
-    // mission complete: money in, toast + panel proof, Dario by the Vantara GT
+    // mission complete: money in, toast + panel proof, Dario by the red Vantara GT
+    // on the avenue with the clock tower behind and a cruiser passing
     game.money = 350;
     game.missions.index = 1;
     game.missions.completed = 1;
     game.missions.state = 'complete';
     game.missions.def = { title: 'Paket untuk Madame Luma', reward: 350 };
-    placePlayerOnFoot(game, plaza.x + 6, plaza.z + 10, Math.PI * 0.75);
-    // a cruiser passing with lights on, traffic around the plaza
+    placePlayerOnFoot(game, 0, 14, Math.PI / 2);
+    // a cruiser passing on the avenue with lights on, traffic around the plaza
     game.police.setWanted(1);
     game.police.update(0.1, { x: game.player.x, z: game.player.z }, 0, game.world.colliders, game.allVehicles, null);
     if (game.police.cars[0]) {
       const c = game.police.cars[0];
-      c.x = plaza.x + 22; c.z = -48; c.heading = Math.PI / 2; c.speed = 8;
+      c.x = -16; c.z = 2; c.heading = -0.4; c.speed = 0; // parked cruiser, lights flashing (held by shot mode)
+      c.mesh.position.set(c.x, 0, c.z); c.mesh.rotation.y = c.heading; // mesh only syncs in update(), which hold skips
     }
     stepWorld(game, 2);
-    setCamera(game, 2.4, 0.32, 9, game.player);
-    game.hud.toast('MISI SELESAI — Paket untuk Madame Luma · +$350', 9000);
+    setCamera(game, Math.PI / 2, 0.3, 10, game.player);
+    game.hud.toast('MISI SELESAI — Paket untuk Madame Luma · +$350', 60000);
   } else {
-    // hero (default): Dario on foot at Plaza Mar, clock tower + lighthouse behind,
-    // mission 1 active with beacon, traffic and pedestrians in frame
-    placePlayerOnFoot(game, plaza.x + 16, plaza.z + 16, Math.PI * 0.8);
+    // hero (default): Dario on foot at the (0,0) intersection, looking north-west
+    // down at the Plaza Mar clock tower, beacon + sea beyond it, traffic crossing
+    placePlayerOnFoot(game, -4, -4, (Math.PI * 3) / 4);
     game.missions.start(0);
-    game.missions.accept();
+    game.acceptMission();
     stepWorld(game, 3);
-    setCamera(game, 2.35, 0.3, 8.5, game.player);
+    setCamera(game, 2.35, 0.36, 13.5, game.player);
+    game.hud.setCrosshair(false);
   }
   game.hud.update(0, {
     wanted: game.police.wanted,
@@ -149,10 +153,10 @@ export function runSelfTest(game) {
     game._toggleVehicle();
     check('exit-car', !game.player.inVehicle, 'on foot again');
 
-    // wanted + police spawn
+    // wanted + police spawn (stealing the car earlier already added 1 star)
     game.police.addWanted(2);
     for (let i = 0; i < 60; i++) game.police.update(1 / 30, { x: game.player.x, z: game.player.z }, 0, game.world.colliders, game.allVehicles, null);
-    check('wanted-police', game.police.wanted === 2 && game.police.cars.length >= 2,
+    check('wanted-police', game.police.wanted >= 2 && game.police.cars.length >= 2,
       `wanted ${game.police.wanted}, ${game.police.cars.length} cruisers`);
     // police close in
     const copD0 = dist2(game.police.cars[0].x, game.police.cars[0].z, game.player.x, game.player.z);
@@ -165,7 +169,7 @@ export function runSelfTest(game) {
     // mission 1 full cycle, staged by teleport
     const money0 = game.money;
     game.missions.start(0);
-    game.missions.accept();
+    game.acceptMission();
     game.player.x = game.missions.target.x; game.player.z = game.missions.target.z;
     for (let i = 0; i < 30; i++) game.missions.update(1 / 30);
     check('mission-pickup', game.missions.stage === 'return', `stage ${game.missions.stage}`);
@@ -180,10 +184,11 @@ export function runSelfTest(game) {
     check('save', !!loaded && loaded.money === game.money && loaded.missionIndex === game.missions.index,
       loaded ? `money $${loaded.money}` : 'no save');
 
-    // wanted decay: cops far away for 9s -> lose a star
+    // wanted decay: cops held far away for 9s -> lose a star (hold freezes the chase)
+    const wantedBefore = game.police.wanted;
     game.police.cars.forEach((c) => { c.x = game.player.x + 90; c.z = game.player.z + 90; });
-    for (let i = 0; i < 300; i++) game.police.update(1 / 30, { x: game.player.x, z: game.player.z }, 0, game.world.colliders, game.allVehicles, null);
-    check('wanted-decay', game.police.wanted < 2, `wanted ${game.police.wanted}`);
+    for (let i = 0; i < 300; i++) game.police.update(1 / 30, { x: game.player.x, z: game.player.z }, 0, game.world.colliders, game.allVehicles, null, true);
+    check('wanted-decay', game.police.wanted < wantedBefore, `wanted ${wantedBefore} -> ${game.police.wanted}`);
   } catch (e) {
     console.log(`SELFTEST FAIL exception — ${e.message}`);
     console.log('SELFTEST FAIL');

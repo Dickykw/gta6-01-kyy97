@@ -28,6 +28,7 @@ class Game {
     this.started = false;
     this.paused = false;
     this.shotMode = !!SHOT;
+    this.shotName = SHOT;
     this.keys = {};
     this.policeNearest = 999;
     this.save = loadSave();
@@ -62,7 +63,7 @@ class Game {
     this.parkedCars = [];
     const rng = mulberry32(SEED + 23);
     for (const spot of this.world.parkedSpots) {
-      const color = pick(rng, VEHICLE_TYPES[spot.type].colors);
+      const color = spot.type === 'sport' ? 0xc23b2e : pick(rng, VEHICLE_TYPES[spot.type].colors); // the Vantara GT is always red
       const car = new Vehicle(this.scene, spot.type, color, spot.x, spot.z, spot.heading, 'parked');
       this.allVehicles.push(car);
       this.parkedCars.push(car);
@@ -304,12 +305,18 @@ class Game {
         reverse: !!(this.keys['KeyS'] || this.keys['ArrowDown']) && Math.abs(v.speed) < 0.5,
       };
       if (this.shotMode) {
-        // autopilot for staged screenshots: cruise the avenue
-        const target = { x: p.inVehicle.x + 60, z: 0 };
-        const auto = v.chaseInput(nearestRoadPoint(target.x, target.z).x, 0);
+        // autopilot for staged screenshots: cruise a loop of the main avenues
+        if (!this.shotWps) {
+          this.shotWps = [{ x: 80, z: 0 }, { x: 80, z: -48 }, { x: -80, z: -48 }, { x: -80, z: 0 }];
+          this.shotWp = 0;
+        }
+        const wp = this.shotWps[this.shotWp];
+        if (dist2(v.x, v.z, wp.x, wp.z) < 10) this.shotWp = (this.shotWp + 1) % this.shotWps.length;
+        const auto = v.chaseInput(wp.x, wp.z);
         input.throttle = auto.throttle; input.steer = auto.steer; input.brake = 0; input.reverse = false;
       }
       v.update(dt, input, this.world.colliders, this.allVehicles, this.dust);
+      if (this.shotMode && v.speed < 8) v.speed = 10; // never stall mid-shot
       p.x = v.x; p.z = v.z; p.heading = v.heading;
       driving = true; speed = v.speed; drifting = v.drifting;
       // headlight follows the car
@@ -326,7 +333,8 @@ class Game {
     // world life
     this.traffic.update(dt, this.world.colliders, { x: p.x, z: p.z }, p.inVehicle);
     this.policeNearest = this.police.update(dt, { x: p.x, z: p.z }, p.camYaw, this.world.colliders, this.allVehicles,
-      () => { if (!this.shotMode) this.hud.showBusted(); });
+      () => { if (!this.shotMode) this.hud.showBusted(); },
+      this.shotMode && this.shotName === 'complete'); // complete shot holds the cruiser in frame
     if (!this.shotMode) this.missions.update(dt);
     else this.missions.update(0); // frozen timers in shot mode, beacon still animates
     this.combat.update(dt);
@@ -343,7 +351,7 @@ class Game {
       const near = this._nearestEnterable();
       if (near) this.hud.setPrompt(`[E] ${near.driver === 'parked' || near.driver === 'npc' ? 'Curi' : 'Naik'} ${near.spec.name}`);
       else this.hud.setPrompt('');
-      this.hud.setCrosshair(true);
+      this.hud.setCrosshair(!this.shotMode); // staged shots keep a clean frame
     } else {
       this.hud.setPrompt('[E] Keluar mobil · [Space] Rem tangan');
       this.hud.setCrosshair(false);

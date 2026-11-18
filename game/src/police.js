@@ -44,7 +44,7 @@ export class Police {
     return nearestRoadPoint(playerPos.x + 50, playerPos.z);
   }
 
-  update(dt, playerPos, camYaw, colliders, allVehicles, onBusted) {
+  update(dt, playerPos, camYaw, colliders, allVehicles, onBusted, hold = false) {
     this.sirenPhase += dt * 7;
     const want = this.wanted > 0 ? Math.min(this.wanted + 1, 3) : 0;
     // spawn / despawn to match wanted level
@@ -60,19 +60,21 @@ export class Police {
       if (i >= 0) allVehicles.splice(i, 1);
       this.scene.remove(car.mesh);
     }
-    // chase
+    // chase (frozen in staged shots that hold the scene: lights keep flashing)
     let nearest = 1e9;
     for (const car of this.cars) {
       const d = dist2(car.x, car.z, playerPos.x, playerPos.z);
       nearest = Math.min(nearest, d);
-      const input = car.chaseInput(playerPos.x, playerPos.z);
-      // at wanted 3 the lead cruiser tries to cut the player off from ahead
-      if (this.wanted >= 3 && this.cars.indexOf(car) === 0 && d > 25) {
-        const tx = playerPos.x + (playerPos.x - car.x) * 0.4;
-        const tz = playerPos.z + (playerPos.z - car.z) * 0.4;
-        Object.assign(input, car.chaseInput(tx, tz));
+      if (!hold) {
+        const input = car.chaseInput(playerPos.x, playerPos.z);
+        // at wanted 3 the lead cruiser tries to cut the player off from ahead
+        if (this.wanted >= 3 && this.cars.indexOf(car) === 0 && d > 25) {
+          const tx = playerPos.x + (playerPos.x - car.x) * 0.4;
+          const tz = playerPos.z + (playerPos.z - car.z) * 0.4;
+          Object.assign(input, car.chaseInput(tx, tz));
+        }
+        car.update(dt, input, colliders, allVehicles, null);
       }
-      car.update(dt, input, colliders, allVehicles, null);
       // siren flash: alternate red / blue light bar
       const on = Math.sin(this.sirenPhase) > 0;
       if (car.mesh.userData.lightRed) {
@@ -88,7 +90,7 @@ export class Police {
       } else this.clearTimer = 0;
     }
     // busted: on foot and a cruiser sits on the player for 3 s
-    if (this.wanted > 0 && nearest < 4.5) {
+    if (!hold && this.wanted > 0 && nearest < 4.5) {
       this.bustedTimer += dt;
       if (this.bustedTimer > 3 && !this.busted) {
         this.busted = true;
